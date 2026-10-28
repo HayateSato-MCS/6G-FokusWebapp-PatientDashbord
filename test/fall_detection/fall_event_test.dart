@@ -76,4 +76,26 @@ void main() {
     })!;
     expect(naive.detectionTime, DateTime.utc(2026, 10, 21, 8));
   });
+
+  test('epoch timestamps (seconds or ms, number or text) and alert_time fallback', () {
+    final expected = DateTime.utc(2026, 10, 28, 17);
+    final seconds = expected.millisecondsSinceEpoch ~/ 1000;
+    Map<String, Object?> withTime(Object? timestamp, [Object? alertTime]) {
+      final payload = {...alertPayload('not_answered', null), 'timestamp': timestamp};
+      if (alertTime != null) payload['alert_time'] = alertTime;
+      return payload;
+    }
+
+    expect(parse('fall/alert/p1', withTime(seconds))!.detectionTime, expected);
+    expect(parse('fall/alert/p1', withTime(seconds * 1000))!.detectionTime, expected);
+    expect(parse('fall/alert/p1', withTime('$seconds'))!.detectionTime, expected);
+    expect(
+      parse('fall/alert/p1', withTime(null, '2026-10-28T17:00:00Z'))!.detectionTime,
+      expected,
+    );
+
+    final noTime = parse('fall/alert/p1', withTime(null))!;
+    expect(noTime.detectionTime, isNull);
+    expect(noTime.receivedAt, isNotNull);
+  });
 }

@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../core/time_utils.dart';
 import '../../ui/fall_colors.dart';
 import '../alert_controller.dart';
+import '../fall_event.dart';
 
 /// Shows popups for live fall events, on top of whatever page is open.
 ///
@@ -123,6 +123,12 @@ class _FallAlertPopupListenerState extends State<FallAlertPopupListener> {
       context: dialogContext,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
+        // White and evenly rounded, with the red header clipped to the
+        // corners; independent of the app's (purple) theme.
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        clipBehavior: Clip.antiAlias,
         titlePadding: EdgeInsets.zero,
         title: Container(
           color: FallColors.alertNotice,
@@ -146,16 +152,25 @@ class _FallAlertPopupListenerState extends State<FallAlertPopupListener> {
             ),
             const SizedBox(height: 12),
             Text('Patient:in: ${_label(patientId)}'),
-            Text('Erkannt: ${formatLocal(notification.event.detectionTime)}'),
+            Text(_timeLine(notification.event)),
           ],
         ),
         actions: [
           TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: FallColors.textPrimary,
+              shape: _buttonShape,
+            ),
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Quittieren'),
           ),
           if (widget.onOpenPatient != null)
             FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: FallColors.alertNotice,
+                foregroundColor: FallColors.alertNoticeText,
+                shape: _buttonShape,
+              ),
               onPressed: () => Navigator.of(context).pop(true),
               child: const Text('Patient:in öffnen'),
             ),
@@ -166,6 +181,20 @@ class _FallAlertPopupListenerState extends State<FallAlertPopupListener> {
     _openDialogs.remove(patientId);
     widget.controller.acknowledge(patientId);
     if (open == true) widget.onOpenPatient?.call(patientId);
+  }
+
+  static final _buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(8));
+
+  /// "Erkannt: 28.10.2026, 18:40:12" from the payload's detection time, or
+  /// the time the message arrived when the payload has none.
+  static String _timeLine(FallEvent event) {
+    final detected = event.detectionTime;
+    final time = (detected ?? event.receivedAt)?.toLocal();
+    if (time == null) return 'Erkannt: –';
+    String two(int v) => v.toString().padLeft(2, '0');
+    final text = '${two(time.day)}.${two(time.month)}.${time.year}, '
+        '${two(time.hour)}:${two(time.minute)}:${two(time.second)}';
+    return detected != null ? 'Erkannt: $text' : 'Empfangen: $text';
   }
 
   @override

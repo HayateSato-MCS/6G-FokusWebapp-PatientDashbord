@@ -85,6 +85,10 @@ Future<void> showDayFallsList(BuildContext context, DateTime day, DayFalls falls
   return showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
+      // same look as the fall alert dialog: white, evenly rounded, no theme tint
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: Text('Stürze am ${two(day.day)}.${two(day.month)}.${day.year}'),
       content: SizedBox(
         width: 480,
@@ -139,7 +143,14 @@ Future<void> showDayFallsList(BuildContext context, DateTime day, DayFalls falls
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Schließen')),
+        TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: FallColors.textPrimary,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Schließen'),
+        ),
       ],
     ),
   );

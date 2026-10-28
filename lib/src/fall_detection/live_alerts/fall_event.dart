@@ -27,6 +27,7 @@ class FallEvent {
     this.modelVersion,
     this.deviceId,
     this.detectionTime,
+    this.receivedAt,
     this.patientConfirmed,
     this.needsHelp,
     this.caregiverAlert = false,
@@ -49,8 +50,13 @@ class FallEvent {
   final String? modelVersion;
   final String? deviceId;
 
-  /// Detection time from the payload's `timestamp`, in UTC.
+  /// Detection time from the payload's `timestamp` (ISO text or epoch),
+  /// falling back to `alert_time`; in UTC. Null when neither is usable.
   final DateTime? detectionTime;
+
+  /// When this app received the message (UTC). Shown when the payload
+  /// carries no usable time.
+  final DateTime? receivedAt;
 
   /// [PatientConfirmed] int; null for pending events.
   final int? patientConfirmed;
@@ -123,7 +129,9 @@ class FallEvent {
       confidence: rawConfidence is num ? rawConfidence.toDouble() : null,
       modelVersion: rawModel is String && rawModel.isNotEmpty ? rawModel : null,
       deviceId: rawDevice is String && rawDevice.isNotEmpty ? rawDevice : null,
-      detectionTime: parseUtcTimestamp(decoded['timestamp']),
+      detectionTime:
+          parseUtcTimestamp(decoded['timestamp']) ?? parseUtcTimestamp(decoded['alert_time']),
+      receivedAt: DateTime.now().toUtc(),
       patientConfirmed: confirmed,
       needsHelp: needsHelp,
       caregiverAlert: caregiverAlert,
