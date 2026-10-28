@@ -6,6 +6,9 @@ class MCSDashboardEnvironment {
 
   static const String fhirBaseUrl = "$idpScheme://$idpHost/fhir/";
 
+  // influxdb.internal.e-healthservice.de = original FOKUS instance, retired after issues.
+  // 6g-path.apps.osc.fokus.fraunhofer.de/influxdb = the "instance on OpenShift"; current,
+  // shared with the 6G mobile app (also for fall_events). See README "InfluxDB instances".
   static const String influxDBHost = String.fromEnvironment("INFLUXDB_URL",
       // defaultValue: "https://influxdb.internal.e-healthservice.de");
       defaultValue: "https://6g-path.apps.osc.fokus.fraunhofer.de/influxdb");
