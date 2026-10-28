@@ -49,12 +49,12 @@ void main() {
     test('dedupes by observation_id, counts simulated and id-less rows per time', () {
       final counts = InfluxFallRepository.countFalls([
         // the same fall written twice (mobile app + dashboard)
-        (patientId: 'p1', observationId: 'obs-A', time: now.subtract(const Duration(hours: 1))),
-        (patientId: 'p1', observationId: 'obs-A', time: now.subtract(const Duration(hours: 1))),
-        (patientId: 'p1', observationId: 'simulated-fall', time: now.subtract(const Duration(hours: 2))),
-        (patientId: 'p1', observationId: 'simulated-fall', time: now.subtract(const Duration(hours: 3))),
-        (patientId: 'p1', observationId: null, time: now.subtract(const Duration(days: 3))),
-        (patientId: 'p2', observationId: 'obs-B', time: now.subtract(const Duration(days: 5))),
+        (patientId: 'p1', observationId: 'obs-A', patientConfirmed: 1, time: now.subtract(const Duration(hours: 1))),
+        (patientId: 'p1', observationId: 'obs-A', patientConfirmed: 1, time: now.subtract(const Duration(hours: 1))),
+        (patientId: 'p1', observationId: 'simulated-fall', patientConfirmed: 1, time: now.subtract(const Duration(hours: 2))),
+        (patientId: 'p1', observationId: 'simulated-fall', patientConfirmed: -1, time: now.subtract(const Duration(hours: 3))),
+        (patientId: 'p1', observationId: null, patientConfirmed: 1, time: now.subtract(const Duration(days: 3))),
+        (patientId: 'p2', observationId: 'obs-B', patientConfirmed: 1, time: now.subtract(const Duration(days: 5))),
       ], now, week);
       expect(counts['p1'], 4);
       expect(counts['p2'], 1);
@@ -63,11 +63,24 @@ void main() {
 
     test('rolling 7 x 24 h: -167 h counts, -169 h does not', () {
       final counts = InfluxFallRepository.countFalls([
-        (patientId: 'p1', observationId: 'in', time: now.subtract(const Duration(hours: 167))),
-        (patientId: 'p1', observationId: 'out', time: now.subtract(const Duration(hours: 169))),
-        (patientId: 'p2', observationId: 'old', time: now.subtract(const Duration(days: 8))),
+        (patientId: 'p1', observationId: 'in', patientConfirmed: 1, time: now.subtract(const Duration(hours: 167))),
+        (patientId: 'p1', observationId: 'out', patientConfirmed: 1, time: now.subtract(const Duration(hours: 169))),
+        (patientId: 'p2', observationId: 'old', patientConfirmed: 1, time: now.subtract(const Duration(days: 8))),
       ], now, week);
       expect(counts['p1'], 1);
+      expect(counts.containsKey('p2'), isFalse);
+    });
+
+    test('falls the patient denied do not count; yes, no answer and missing do', () {
+      final counts = InfluxFallRepository.countFalls([
+        (patientId: 'p1', observationId: 'yes', patientConfirmed: 1, time: now.subtract(const Duration(hours: 1))),
+        (patientId: 'p1', observationId: 'no', patientConfirmed: 0, time: now.subtract(const Duration(hours: 2))),
+        (patientId: 'p1', observationId: 'no-answer', patientConfirmed: -1, time: now.subtract(const Duration(hours: 3))),
+        (patientId: 'p1', observationId: 'missing', patientConfirmed: null, time: now.subtract(const Duration(hours: 4))),
+        (patientId: 'p1', observationId: 'simulated-fall', patientConfirmed: 0, time: now.subtract(const Duration(hours: 5))),
+        (patientId: 'p2', observationId: 'only-no', patientConfirmed: 0, time: now.subtract(const Duration(hours: 1))),
+      ], now, week);
+      expect(counts['p1'], 3);
       expect(counts.containsKey('p2'), isFalse);
     });
   });
@@ -129,6 +142,7 @@ void main() {
       expect(query, contains('from(bucket: "sensors")'));
       expect(query, contains('r["_measurement"] == "fall_events"'));
       expect(query, contains('range(start: -168h)'));
+      expect(query, contains('r["_field"] == "patient_confirmed"'));
       expect(counts['p1'], 1);
     });
 
@@ -139,7 +153,8 @@ void main() {
         return http.Response(
           ',result,table,_time,fall_detected,needs_help,observation_id,patient_confirmed,patient_id\r\n'
           ',_result,0,2026-10-28T10:00:00Z,true,true,obs-1,1,202\r\n'
-          ',_result,0,2026-10-28T09:00:00Z,true,,simulated-fall,0,202\r\n',
+          ',_result,0,2026-10-28T09:30:00Z,true,,obs-2,0,202\r\n' // denied: left out
+          ',_result,0,2026-10-28T09:00:00Z,true,,simulated-fall,-1,202\r\n',
           200,
         );
       });

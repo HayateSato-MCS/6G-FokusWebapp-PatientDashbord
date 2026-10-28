@@ -100,6 +100,8 @@ Implemented on branch `fall-dashboard-integration` (2026-10-28) in [lib/src/fall
 | Overview, each patient bar | Card colouring like the Python fall dashboard (pale red pending, red alert, green resolved), plus the **fall count of the last 7 days** | MQTT + InfluxDB `fall_events` |
 | Patient page | **Fall count for the date selected** in the calendar | InfluxDB `fall_events` |
 
+Both counts leave out falls the patient answered with "no". Falls answered "yes" and falls without an answer count (plan D7).
+
 Patient key: the 6G mobile app's `patient_id` **is** the patient's FHIR ID, so fall data matches the existing tiles directly (`fhirId`). Delivery: pushed to a new branch on FOKUS's repo.
 
 ### Behaviour rules not to change

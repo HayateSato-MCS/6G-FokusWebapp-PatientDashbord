@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../config.dart';
+import '../core/patient_confirmed.dart';
 import '../core/time_utils.dart';
 import 'fall_record.dart';
 import 'flux_csv.dart';
@@ -32,21 +33,28 @@ class InfluxFallRepository {
   final http.Client _http;
   final DateTime Function() _clock;
 
+  /// Whether a stored fall counts: everything except falls the patient
+  /// denied ("no", 0). "Yes" and "no answer" count (decision 2026-10-28): a
+  /// missing answer can mean the patient couldn't answer. Checked in Dart,
+  /// not Flux, so rows without the field still count.
+  static bool countsAsFall(int? patientConfirmed) => patientConfirmed != PatientConfirmed.no;
+
   /// Falls per patient within the last [window] (rolling, not calendar days).
   ///
   /// One count per fall: rows sharing an observation_id (for example written
   /// by both the mobile app and the fall dashboard) count once. Rows without
   /// an observation_id, or with the shared "simulated-fall" id, count per
-  /// timestamp. Simulated falls count. Patients with no falls are absent.
+  /// timestamp. Simulated falls count; falls the patient denied don't
+  /// ([countsAsFall]). Patients with no falls are absent.
   Future<Map<String, int>> fetchFallCounts({Duration window = const Duration(days: 7)}) async {
     final rows = await _query('''
 from(bucket: "${_flux(settings.bucket)}")
   |> range(start: -${window.inHours}h)
   |> filter(fn: (r) => r["_measurement"] == "fall_events")
-  |> filter(fn: (r) => r["_field"] == "fall_detected" or r["_field"] == "observation_id")
+  |> filter(fn: (r) => r["_field"] == "fall_detected" or r["_field"] == "observation_id" or r["_field"] == "patient_confirmed")
   |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
   |> filter(fn: (r) => r["fall_detected"] == true)
-  |> keep(columns: ["_time", "patient_id", "observation_id"])
+  |> keep(columns: ["_time", "patient_id", "observation_id", "patient_confirmed"])
 ''');
     return countFalls(
       [
@@ -55,6 +63,7 @@ from(bucket: "${_flux(settings.bucket)}")
             (
               patientId: row['patient_id']!,
               observationId: row['observation_id'],
+              patientConfirmed: int.tryParse(row['patient_confirmed'] ?? ''),
               time: parseUtcTimestamp(row['_time'])!,
             ),
       ],
@@ -64,7 +73,8 @@ from(bucket: "${_flux(settings.bucket)}")
   }
 
   /// The falls of [patientId] between [start] (inclusive) and [stop]
-  /// (exclusive), newest first, one entry per fall, simulated falls included.
+  /// (exclusive), newest first, one entry per fall, simulated falls included,
+  /// falls the patient denied left out ([countsAsFall]).
   /// Use [localDay] for the day picked in the calendar.
   Future<DayFalls> fetchFallsBetween({
     required String patientId,
@@ -83,7 +93,8 @@ from(bucket: "${_flux(settings.bucket)}")
   |> sort(columns: ["_time"], desc: true)
   |> limit(n: $limit)
 ''');
-    return DayFalls(dedupe([for (final row in rows) _toRecord(row)]));
+    final records = [for (final row in rows) _toRecord(row)];
+    return DayFalls(dedupe(records.where((r) => countsAsFall(r.patientConfirmed))));
   }
 
   /// Local midnight of [day] and the next local midnight. Day lengths
@@ -139,7 +150,7 @@ $onlyFallsFilter  |> group(columns: ["patient_id"])
 
   /// Pure counting step of [fetchFallCounts], exposed for tests.
   static Map<String, int> countFalls(
-    Iterable<({String patientId, String? observationId, DateTime time})> rows,
+    Iterable<({String patientId, String? observationId, int? patientConfirmed, DateTime time})> rows,
     DateTime now,
     Duration window,
   ) {
@@ -147,7 +158,7 @@ $onlyFallsFilter  |> group(columns: ["patient_id"])
     // patient_id -> dedup keys
     final falls = <String, Set<String>>{};
     for (final row in rows) {
-      if (row.time.isBefore(cutoff)) continue;
+      if (row.time.isBefore(cutoff) || !countsAsFall(row.patientConfirmed)) continue;
       falls.putIfAbsent(row.patientId, () => {}).add(_fallKey(row.observationId, row.time));
     }
     return {for (final entry in falls.entries) entry.key: entry.value.length};
