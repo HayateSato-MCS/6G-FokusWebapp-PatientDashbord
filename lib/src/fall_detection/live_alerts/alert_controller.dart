@@ -69,7 +69,7 @@ class AlertController extends ChangeNotifier {
   final Duration pendingTimeout;
   final Duration resolvedDisplay;
 
-  static const pendingNotice = 'Possible fall, wait for confirmation';
+  static const pendingNotice = 'Möglicher Sturz, warte auf Bestätigung';
 
   // observation_id (or a generated key) -> patient_id
   final Map<String, String> _pending = {};
@@ -123,8 +123,8 @@ class AlertController extends ChangeNotifier {
       final noResponse = event.patientConfirmed == PatientConfirmed.notAnswered;
       final state = PatientAlertState(
         PatientAlertKind.alert,
-        noResponse ? 'Patient did not respond' : 'Fall is confirmed',
-        overlay: noResponse ? 'Check on patient' : 'Help is requested',
+        noResponse ? 'Patient:in reagiert nicht' : 'Sturz bestätigt',
+        overlay: noResponse ? 'Bitte nach Patient:in sehen' : 'Hilfe angefordert',
       );
       _dropPending(patientId);
       _clearResolved(patientId);
@@ -161,11 +161,11 @@ class AlertController extends ChangeNotifier {
   }
 
   static String resolvedNoticeText(FallEvent event) {
-    if (event.patientConfirmed == PatientConfirmed.no) return 'Patient reported no fall';
+    if (event.patientConfirmed == PatientConfirmed.no) return 'Patient:in meldet keinen Sturz';
     if (event.patientConfirmed == PatientConfirmed.yes && event.needsHelp == false) {
-      return 'Fall confirmed, patient is okay';
+      return 'Sturz bestätigt, Patient:in ist okay';
     }
-    return 'Possible fall resolved';
+    return 'Möglicher Sturz aufgehoben';
   }
 
   void _expirePending(String key) {

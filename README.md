@@ -51,6 +51,9 @@ MCS runs the inference server and the MQTT broker. The InfluxDB and this webapp 
 | `INFLUXDB_URL` | `https://6g-path.apps.osc.fokus.fraunhofer.de/influxdb` |
 | `INFLUXDB_ORG` | `mcs-data-labs` |
 | `INFLUXDB_BUCKET` | `6g-path` |
+| `MQTT_URL` | `wss://fall-mqtt.smarko-health.de` (MCS broker for live fall alerts) |
+| `MQTT_PORT` | `443` |
+| `MQTT_USERNAME` / `MQTT_PASSWORD` | empty. Only needed once the broker requires logins (plan Q7) |
 | `INFLUXDB_TOKEN` | **none, required.** Without it every InfluxDB query fails with 401, and the console logs `INFLUXDB_TOKEN is not set`. Use a read-only token for bucket `6g-path`. |
 
 Never put a token in source code. Until 2026-10-28, `environment.dart` had a default token (plus two older ones in comments). They're gone from the code now, but still in the git history of the first two commits. For now the current token stays in use (decision 2026-10-28). Rotating it is postponed, so revisit that before production. Also note that a web build compiles the `--dart-define` values into `main.dart.js`, so anyone who opens the webapp can read the token. That's why it must be **read-only**.
@@ -89,7 +92,7 @@ For deployment (FOKUS), inject the token from the CI/CD secret store at build ti
 
 ## Fall-detection integration
 
-Not built yet. The full plan, with phases, open questions and checklists, is in **[docs/fall_integration_plan.md](docs/fall_integration_plan.md)**. In short:
+Implemented on branch `fall-dashboard-integration` (2026-10-28) in [lib/src/fall_detection/](lib/src/fall_detection/), wired into `main.dart`, the overview (`user_data_item.dart`, `home_screen.dart`) and the patient page (`data_plot_screen.dart`). Not yet tested in a browser against the live broker. The plan, with what's done and what's still open, is in **[docs/fall_integration_plan.md](docs/fall_integration_plan.md)**. In short:
 
 | Where | What the caregiver gets | Data source |
 |---|---|---|

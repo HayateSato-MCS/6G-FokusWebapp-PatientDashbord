@@ -17,10 +17,10 @@ class MqttStatusChip extends StatelessWidget {
       builder: (context, snapshot) {
         final state = snapshot.data ?? MqttLinkState.disconnected;
         final (label, color) = switch (state) {
-          MqttLinkState.connected => ('Connected', FallColors.connected),
-          MqttLinkState.connecting => ('Connecting...', FallColors.textMuted),
-          MqttLinkState.reconnecting => ('Reconnecting...', FallColors.textMuted),
-          MqttLinkState.disconnected => ('Disconnected', FallColors.disconnected),
+          MqttLinkState.connected => ('Sturzalarm verbunden', FallColors.connected),
+          MqttLinkState.connecting => ('Sturzalarm verbindet...', FallColors.textMuted),
+          MqttLinkState.reconnecting => ('Sturzalarm verbindet neu...', FallColors.textMuted),
+          MqttLinkState.disconnected => ('Sturzalarm getrennt', FallColors.disconnected),
         };
         return Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600));
       },

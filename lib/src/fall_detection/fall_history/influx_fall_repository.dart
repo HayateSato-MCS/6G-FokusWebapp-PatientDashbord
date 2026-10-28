@@ -20,9 +20,9 @@ class InfluxQueryException implements Exception {
 /// Talks to the InfluxDB 2 HTTP API directly, so it runs on any platform.
 /// Pure Dart (no Flutter import).
 ///
-/// Running it in a browser means shipping the InfluxDB token to every
-/// browser, and InfluxDB may block cross-origin requests. In a web app,
-/// call it from your backend instead; see handover/03_fall_history.md, section 3.
+/// In this webapp it runs in the browser, like the existing biosignal
+/// queries. The OpenShift InfluxDB allows cross-origin requests (checked
+/// 2026-10-28, see docs/fall_integration_plan.md, phase 0).
 class InfluxFallRepository {
   InfluxFallRepository(this.settings, {http.Client? httpClient, DateTime Function()? clock})
       : _http = httpClient ?? http.Client(),
@@ -32,18 +32,16 @@ class InfluxFallRepository {
   final http.Client _http;
   final DateTime Function() _clock;
 
-  static const simulatedObservationId = 'simulated-fall';
-
-  /// Fall counts per patient for the last 30 days and the last 24 hours.
+  /// Falls per patient within the last [window] (rolling, not calendar days).
   ///
   /// One count per fall: rows sharing an observation_id (for example written
   /// by both the mobile app and the fall dashboard) count once. Rows without
   /// an observation_id, or with the shared "simulated-fall" id, count per
-  /// timestamp. Patients with no falls are absent from the map.
-  Future<Map<String, FallCounts>> fetchFallCounts() async {
+  /// timestamp. Simulated falls count. Patients with no falls are absent.
+  Future<Map<String, int>> fetchFallCounts({Duration window = const Duration(days: 7)}) async {
     final rows = await _query('''
 from(bucket: "${_flux(settings.bucket)}")
-  |> range(start: -720h)
+  |> range(start: -${window.inHours}h)
   |> filter(fn: (r) => r["_measurement"] == "fall_events")
   |> filter(fn: (r) => r["_field"] == "fall_detected" or r["_field"] == "observation_id")
   |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
@@ -61,7 +59,50 @@ from(bucket: "${_flux(settings.bucket)}")
             ),
       ],
       _clock(),
+      window,
     );
+  }
+
+  /// The falls of [patientId] between [start] (inclusive) and [stop]
+  /// (exclusive), newest first, one entry per fall, simulated falls included.
+  /// Use [localDay] for the day picked in the calendar.
+  Future<DayFalls> fetchFallsBetween({
+    required String patientId,
+    required DateTime start,
+    required DateTime stop,
+    int limit = 500,
+  }) async {
+    final rows = await _query('''
+from(bucket: "${_flux(settings.bucket)}")
+  |> range(start: ${start.toUtc().toIso8601String()}, stop: ${stop.toUtc().toIso8601String()})
+  |> filter(fn: (r) => r["_measurement"] == "fall_events")
+  |> filter(fn: (r) => r["patient_id"] == "${_flux(patientId)}")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> filter(fn: (r) => r["fall_detected"] == true)
+  |> group(columns: ["patient_id"])
+  |> sort(columns: ["_time"], desc: true)
+  |> limit(n: $limit)
+''');
+    return DayFalls(dedupe([for (final row in rows) _toRecord(row)]));
+  }
+
+  /// Local midnight of [day] and the next local midnight. Day lengths
+  /// follow the clock change (23 or 25 hours), which `DateTime` handles.
+  static ({DateTime start, DateTime stop}) localDay(DateTime day) {
+    final local = day.toLocal();
+    return (
+      start: DateTime(local.year, local.month, local.day),
+      stop: DateTime(local.year, local.month, local.day + 1),
+    );
+  }
+
+  /// One record per fall, in input order: same rule as [countFalls].
+  static List<FallRecord> dedupe(Iterable<FallRecord> records) {
+    final seen = <String>{};
+    return [
+      for (final record in records)
+        if (seen.add(_fallKey(record.observationId, record.detectionTime))) record,
+    ];
   }
 
   /// Fall history, newest first.
@@ -97,32 +138,29 @@ $onlyFallsFilter  |> group(columns: ["patient_id"])
   void close() => _http.close();
 
   /// Pure counting step of [fetchFallCounts], exposed for tests.
-  static Map<String, FallCounts> countFalls(
+  static Map<String, int> countFalls(
     Iterable<({String patientId, String? observationId, DateTime time})> rows,
     DateTime now,
+    Duration window,
   ) {
-    // patient_id -> {dedup key: latest time}
-    final falls = <String, Map<String, DateTime>>{};
+    final cutoff = now.toUtc().subtract(window);
+    // patient_id -> dedup keys
+    final falls = <String, Set<String>>{};
     for (final row in rows) {
-      final observation = row.observationId;
-      final key = observation != null &&
-              observation.isNotEmpty &&
-              observation != simulatedObservationId
-          ? observation
-          : 'time:${row.time.toIso8601String()}';
-      final seen = falls.putIfAbsent(row.patientId, () => {});
-      final previous = seen[key];
-      if (previous == null || row.time.isAfter(previous)) seen[key] = row.time;
+      if (row.time.isBefore(cutoff)) continue;
+      falls.putIfAbsent(row.patientId, () => {}).add(_fallKey(row.observationId, row.time));
     }
-    final cutoff = now.toUtc().subtract(const Duration(hours: 24));
-    return {
-      for (final entry in falls.entries)
-        entry.key: FallCounts(
-          last30Days: entry.value.length,
-          last24Hours: entry.value.values.where((t) => !t.isBefore(cutoff)).length,
-        ),
-    };
+    return {for (final entry in falls.entries) entry.key: entry.value.length};
   }
+
+  /// Rows with the same real observation_id are one fall; rows without one,
+  /// or with the shared simulated id, are told apart by their timestamp.
+  static String _fallKey(String? observationId, DateTime? time) =>
+      observationId != null &&
+              observationId.isNotEmpty &&
+              observationId != simulatedObservationId
+          ? observationId
+          : 'time:${time?.toUtc().toIso8601String()}';
 
   Future<List<Map<String, String>>> _query(String flux) async {
     final uri = Uri.parse('${_trimSlash(settings.url)}/api/v2/query')

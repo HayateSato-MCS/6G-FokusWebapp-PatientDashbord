@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:fake_async/fake_async.dart';
-import 'package:fall_dashboard/fall_dashboard.dart';
+import 'package:dca/src/fall_detection/fall_detection.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 FallEvent possible(String patient, String? observation) => FallEvent.fromMqtt(
@@ -35,7 +35,7 @@ void main() {
 
       controller.handleEvent(alert('p1', 'o1', 'no', null));
       expect(controller.stateFor('p1')!.kind, PatientAlertKind.resolved);
-      expect(controller.stateFor('p1')!.notice, 'Patient reported no fall');
+      expect(controller.stateFor('p1')!.notice, 'Patient:in meldet keinen Sturz');
 
       async.elapse(const Duration(seconds: 7));
       expect(controller.stateFor('p1'), isNotNull);
@@ -48,7 +48,7 @@ void main() {
   test('"yes" without help is resolved with its own text', () {
     final controller = AlertController();
     controller.handleEvent(alert('p1', 'o1', 'yes', false));
-    expect(controller.stateFor('p1')!.notice, 'Fall confirmed, patient is okay');
+    expect(controller.stateFor('p1')!.notice, 'Sturz bestätigt, Patient:in ist okay');
     controller.dispose();
   });
 
@@ -59,8 +59,8 @@ void main() {
       controller.handleEvent(alert('p1', 'o1', 'yes', true));
       final state = controller.stateFor('p1')!;
       expect(state.kind, PatientAlertKind.alert);
-      expect(state.notice, 'Fall is confirmed');
-      expect(state.overlay, 'Help is requested');
+      expect(state.notice, 'Sturz bestätigt');
+      expect(state.overlay, 'Hilfe angefordert');
 
       async.elapse(const Duration(minutes: 10));
       expect(controller.stateFor('p1')!.kind, PatientAlertKind.alert);
@@ -76,8 +76,8 @@ void main() {
     controller.handleEvent(alert('p1', 'o1', 'not_answered', null));
     final state = controller.stateFor('p1')!;
     expect(state.kind, PatientAlertKind.alert);
-    expect(state.notice, 'Patient did not respond');
-    expect(state.overlay, 'Check on patient');
+    expect(state.notice, 'Patient:in reagiert nicht');
+    expect(state.overlay, 'Bitte nach Patient:in sehen');
     controller.dispose();
   });
 

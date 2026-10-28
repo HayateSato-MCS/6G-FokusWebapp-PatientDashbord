@@ -12,6 +12,7 @@ import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 
 import '../../../mcs_dashboard_tab.dart';
+import '../../fall_detection/fall_detection.dart';
 import '../../data-distribution/data_source_type.dart';
 import '../../data-distribution/measurement.dart';
 import '../../data-distribution/publish_subscribe_manager.dart';
@@ -128,13 +129,41 @@ class _UserDataItemState extends State<UserDataItem> {
     return result;
   }
 
+  void openPatient(FallDetectionServices? fallDetection) {
+    // Opening the patient counts as acknowledging their fall alert, as in
+    // the Python fall dashboard.
+    fallDetection?.alerts.acknowledge(userId);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        settings: RouteSettings(name: patientRouteName(userId)),
+        builder: (context) => DataPlotsScreen(user: widget.user),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 100,
+    final fallDetection = FallDetectionScope.maybeOf(context);
+    if (fallDetection == null) return buildCard(null, null);
+    return ListenableBuilder(
+      listenable: Listenable.merge([fallDetection.alerts, fallDetection.counts]),
+      builder: (context, _) => buildCard(fallDetection, fallDetection.alerts.stateFor(userId)),
+    );
+  }
+
+  /// Card colouring follows the Python fall dashboard (style.css): pale red
+  /// while pending, red border + strip + large line for an alert, green when
+  /// resolved; colours fade over 200 ms.
+  Widget buildCard(FallDetectionServices? fallDetection, PatientAlertState? alert) {
+    final colors = alertCardColors(alert);
+    final isAlert = alert?.kind == PatientAlertKind.alert;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
         shape: BoxShape.rectangle,
-        color: Colors.white, // Container's background color
+        color: colors?.$1 ?? Colors.white, // Container's background color
+        border: Border.all(color: colors?.$2 ?? Colors.transparent),
         borderRadius: BorderRadius.circular(8), // Optional: Rounded corners
         boxShadow: const [
           BoxShadow(
@@ -145,18 +174,56 @@ class _UserDataItemState extends State<UserDataItem> {
           ),
         ],
       ),
-      padding: const EdgeInsets.all(10),
+      clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 20),
       child: GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => DataPlotsScreen(user: widget.user),
+          onTap: () => openPatient(fallDetection),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (fallDetection != null)
+                PatientAlertBanner(
+                    controller: fallDetection.alerts, patientId: userId, showOverlay: false),
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: SizedBox(
+                  height: 80,
+                  child: buildRow(fallDetection, showVitals: !isAlert),
+                ),
               ),
-            );
-          },
-          child: Row(
+              if (isAlert && alert?.overlay != null)
+                Container(
+                  color: FallColors.alertOverlay,
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                  child: Text(
+                    alert!.overlay!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: FallColors.alertOverlayText,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          )),
+    );
+  }
+
+  Widget buildFallCount(FallCountsProvider counts) {
+    final count = counts.countFor(userId);
+    final value = count?.toString() ?? (counts.failed ? 'n. v.' : '—');
+    return Column(children: [
+      const Text('Stürze (7 Tage)'),
+      Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+    ]);
+  }
+
+  /// The original tile content. During an alert only the name stays, like
+  /// the Python dashboard hides the details behind "Help is requested".
+  Widget buildRow(FallDetectionServices? fallDetection, {required bool showVitals}) {
+    return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               mainAxisSize: MainAxisSize.max,
@@ -195,6 +262,7 @@ class _UserDataItemState extends State<UserDataItem> {
                         ],
                       ),
                     )),
+                if (showVitals) ...[
                 Container(
                   color: Colors.grey,
                   width: 1,
@@ -252,6 +320,15 @@ class _UserDataItemState extends State<UserDataItem> {
                             child: Text(getTimeString(dataMap[DataType.SPO2])),
                           ))
                         ]))),
+                if (fallDetection != null) ...[
+                  Container(
+                    color: Colors.grey,
+                    width: 1,
+                    height: double.maxFinite,
+                  ),
+                  Expanded(flex: 12, child: buildFallCount(fallDetection.counts)),
+                ],
+                ],
                 // Container(
                 //   color: Colors.grey,
                 //   width: 1,
@@ -266,7 +343,6 @@ class _UserDataItemState extends State<UserDataItem> {
                 //           Text(
                 //               '${getStringValue(dataMap[DataType.R2R_INTERVALS])} ms')
                 //         ]))),
-              ])),
-    );
+              ]);
   }
 }

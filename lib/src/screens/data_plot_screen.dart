@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dca/src/fall_detection/fall_detection.dart';
 import 'package:dca/src/screens/components/battery_component.dart';
 import 'package:fhir/r4/general_types/general_types.dart';
 import 'package:fhir/r4/resource_types/base/individuals/individuals.dart';
@@ -51,6 +54,13 @@ class _DataPlotsScreenState extends State<DataPlotsScreen> {
   String userId = '202';
   String id = '';
 
+  // Falls on the selected day (plan D4). Null while loading.
+  FallDetectionServices? fallDetection;
+  StreamSubscription<String>? answeredFallsSubscription;
+  DayFalls? dayFalls;
+  bool dayFallsFailed = false;
+  int dayFallsRequest = 0;
+
   @override
   void initState() {
     super.initState();
@@ -60,15 +70,54 @@ class _DataPlotsScreenState extends State<DataPlotsScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final services = FallDetectionScope.maybeOf(context);
+    if (services == fallDetection) return;
+    answeredFallsSubscription?.cancel();
+    fallDetection = services;
+    // A newly answered fall for this patient shows up in the count when
+    // today is selected.
+    answeredFallsSubscription = services?.answeredFalls.listen((patientId) {
+      if (patientId == userId && DateUtils.isSameDay(date, DateTime.now())) loadDayFalls();
+    });
+    loadDayFalls();
+  }
+
+  @override
   void dispose() {
+    answeredFallsSubscription?.cancel();
     data.clear();
     metrics.clear();
     InfluxProvider.shouldFetchStatic = true;
     super.dispose();
   }
 
+  Future<void> loadDayFalls() async {
+    final services = fallDetection;
+    if (services == null) return;
+    final request = ++dayFallsRequest; // a later date change wins
+    final day = InfluxFallRepository.localDay(date);
+    try {
+      final result = await services.repository
+          .fetchFallsBetween(patientId: patientIdOf(widget.user), start: day.start, stop: day.stop);
+      if (!mounted || request != dayFallsRequest) return;
+      setState(() {
+        dayFalls = result;
+        dayFallsFailed = false;
+      });
+    } on InfluxQueryException catch (error) {
+      debugPrint('Falls for $userId unavailable: $error');
+      if (!mounted || request != dayFallsRequest) return;
+      setState(() => dayFallsFailed = true);
+    }
+  }
+
   void updateDate(DateTime newDate, [bool force = false]) async {
     date = newDate;
+    dayFalls = null;
+    dayFallsFailed = false;
+    loadDayFalls();
     dateStart = DateTime(date.year, date.month, date.day);
     id = userId + dateStart.toString();
     debugPrint(
@@ -348,7 +397,9 @@ class _DataPlotsScreenState extends State<DataPlotsScreen> {
                                     dataType: e,
                                 date: DateTimeRange(start: dateStart, end: dateEnd),fetchInterval: const Duration(seconds: 10
                                 ),);
-                              })
+                              }),
+                              if (fallDetection != null)
+                                DayFallsCard(day: date, falls: dayFalls, failed: dayFallsFailed),
                             ]))),
                     SizedBox(width: 10),
                     ElevatedButton(

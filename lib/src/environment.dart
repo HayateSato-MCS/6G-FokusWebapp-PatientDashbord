@@ -22,6 +22,15 @@ class MCSDashboardEnvironment {
   static const String influxDBBucket =
       String.fromEnvironment("INFLUXDB_BUCKET", defaultValue: "6g-path");
 
+  // MQTT broker for live fall alerts: the MCS broker on Hetzner (plan D1).
+  // The 6G mobile app publishes there; this app only subscribes.
+  static const String mqttUrl =
+      String.fromEnvironment("MQTT_URL", defaultValue: "wss://fall-mqtt.smarko-health.de");
+  static const int mqttPort = int.fromEnvironment("MQTT_PORT", defaultValue: 443);
+  // Empty while the broker allows anonymous clients; never commit values.
+  static const String mqttUsername = String.fromEnvironment("MQTT_USERNAME");
+  static const String mqttPassword = String.fromEnvironment("MQTT_PASSWORD");
+
   static const String keyAccessToken = "access_token";
   // static const String headerKeyAuthorization = "Authorization";
   static const String headerKeyAuthorization = "serviceaccesstoken";

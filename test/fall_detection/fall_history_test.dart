@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:fall_dashboard/fall_dashboard.dart';
+import 'package:dca/src/fall_detection/fall_detection.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -42,8 +42,9 @@ void main() {
     });
   });
 
-  group('countFalls', () {
+  group('countFalls (7-day window)', () {
     final now = DateTime.utc(2026, 10, 21, 12);
+    const week = Duration(days: 7);
 
     test('dedupes by observation_id, counts simulated and id-less rows per time', () {
       final counts = InfluxFallRepository.countFalls([
@@ -54,12 +55,54 @@ void main() {
         (patientId: 'p1', observationId: 'simulated-fall', time: now.subtract(const Duration(hours: 3))),
         (patientId: 'p1', observationId: null, time: now.subtract(const Duration(days: 3))),
         (patientId: 'p2', observationId: 'obs-B', time: now.subtract(const Duration(days: 5))),
-      ], now);
-      expect(counts['p1']!.last30Days, 4);
-      expect(counts['p1']!.last24Hours, 3);
-      expect(counts['p2']!.last30Days, 1);
-      expect(counts['p2']!.last24Hours, 0);
+      ], now, week);
+      expect(counts['p1'], 4);
+      expect(counts['p2'], 1);
       expect(counts.containsKey('p3'), isFalse);
+    });
+
+    test('rolling 7 x 24 h: -167 h counts, -169 h does not', () {
+      final counts = InfluxFallRepository.countFalls([
+        (patientId: 'p1', observationId: 'in', time: now.subtract(const Duration(hours: 167))),
+        (patientId: 'p1', observationId: 'out', time: now.subtract(const Duration(hours: 169))),
+        (patientId: 'p2', observationId: 'old', time: now.subtract(const Duration(days: 8))),
+      ], now, week);
+      expect(counts['p1'], 1);
+      expect(counts.containsKey('p2'), isFalse);
+    });
+  });
+
+  group('localDay', () {
+    test('runs from local midnight to the next local midnight', () {
+      final day = InfluxFallRepository.localDay(DateTime(2026, 10, 28, 15, 30));
+      expect(day.start, DateTime(2026, 10, 28));
+      expect(day.stop, DateTime(2026, 10, 29));
+    });
+
+    test('clock-change day (2026-10-25, 25 h in Berlin) still ends at the next midnight', () {
+      final day = InfluxFallRepository.localDay(DateTime(2026, 10, 25, 12));
+      expect(day.start, DateTime(2026, 10, 25));
+      expect(day.stop, DateTime(2026, 10, 26));
+      expect((day.stop.hour, day.stop.minute), (0, 0));
+    });
+  });
+
+  group('dedupe and DayFalls', () {
+    FallRecord rec(String? obs, String time) =>
+        FallRecord(patientId: 'p1', observationId: obs, detectionTime: DateTime.parse(time));
+
+    test('one entry per fall; simulated falls count but are not listed', () {
+      final falls = DayFalls(InfluxFallRepository.dedupe([
+        rec('obs-A', '2026-10-28T10:00:00Z'),
+        rec('obs-A', '2026-10-28T10:00:00Z'), // second writer
+        rec('simulated-fall', '2026-10-28T09:00:00Z'),
+        rec('simulated-fall', '2026-10-28T09:00:00Z'), // same simulated fall twice
+        rec('simulated-fall', '2026-10-28T08:00:00Z'),
+        rec(null, '2026-10-28T07:00:00Z'),
+      ]));
+      expect(falls.total, 4);
+      expect(falls.simulated, 2);
+      expect(falls.listed.map((f) => f.observationId), ['obs-A', null]);
     });
   });
 
@@ -85,7 +128,37 @@ void main() {
       final query = (jsonDecode(sent.body) as Map)['query'] as String;
       expect(query, contains('from(bucket: "sensors")'));
       expect(query, contains('r["_measurement"] == "fall_events"'));
-      expect(counts['p1']!.last24Hours, 1);
+      expect(query, contains('range(start: -168h)'));
+      expect(counts['p1'], 1);
+    });
+
+    test('fetchFallsBetween queries the absolute UTC range and keeps simulated falls', () async {
+      late String query;
+      final client = MockClient((request) async {
+        query = (jsonDecode(request.body) as Map)['query'] as String;
+        return http.Response(
+          ',result,table,_time,fall_detected,needs_help,observation_id,patient_confirmed,patient_id\r\n'
+          ',_result,0,2026-10-28T10:00:00Z,true,true,obs-1,1,202\r\n'
+          ',_result,0,2026-10-28T09:00:00Z,true,,simulated-fall,0,202\r\n',
+          200,
+        );
+      });
+      final repository = InfluxFallRepository(settings, httpClient: client);
+      final day = InfluxFallRepository.localDay(DateTime(2026, 10, 28));
+
+      final falls = await repository.fetchFallsBetween(
+          patientId: '202', start: day.start, stop: day.stop);
+
+      expect(
+        query,
+        contains('range(start: ${day.start.toUtc().toIso8601String()}, '
+            'stop: ${day.stop.toUtc().toIso8601String()})'),
+      );
+      expect(query, contains('r["patient_id"] == "202"'));
+      expect(query, isNot(contains('simulated-fall')));
+      expect(falls.total, 2);
+      expect(falls.simulated, 1);
+      expect(falls.listed.single.needsHelp, isTrue);
     });
 
     test('fetchFalls maps rows to records and escapes the patient filter', () async {
@@ -123,44 +196,6 @@ void main() {
       final repository = InfluxFallRepository(settings,
           httpClient: MockClient((_) async => http.Response('{"code":"unauthorized"}', 401)));
       expect(repository.fetchFallCounts(), throwsA(isA<InfluxQueryException>()));
-    });
-  });
-
-  group('FallEventsWriter.toLineProtocol', () {
-    FallEvent alertEvent(Map<String, Object?> extra) => FallEvent.fromMqtt(
-          topic: 'fall/alert/p1',
-          payload: jsonEncode({
-            'patient_id': 'p1',
-            'fall_detected': true,
-            'patient_confirmed': 'no',
-            'timestamp': '2026-10-21T08:00:00.123Z',
-            ...extra,
-          }),
-        )!;
-
-    test('same schema as the mobile app writes', () {
-      final line = FallEventsWriter.toLineProtocol(alertEvent({
-        'observation_id': 'obs-A',
-        'confidence': 0.912345,
-        'model_version': 'v3',
-        'needs_help': null,
-      }), deviceIdFallback: 'aa:bb');
-      expect(
-        line,
-        'fall_events,device_id=aa:bb,patient_id=p1 '
-        'fall_detected=true,patient_confirmed=0i,confidence=0.9123,'
-        'observation_id="obs-A",model_version="v3" 1792569600123000000',
-      );
-    });
-
-    test('escapes tag values and keeps needs_help when answered', () {
-      final line = FallEventsWriter.toLineProtocol(alertEvent({
-        'patient_id': 'ward 3,bed=1',
-        'needs_help': false,
-      }));
-      expect(line, startsWith(r'fall_events,patient_id=ward\ 3\,bed\=1 '));
-      expect(line, contains('needs_help=false'));
-      expect(line, isNot(contains('device_id')));
     });
   });
 }

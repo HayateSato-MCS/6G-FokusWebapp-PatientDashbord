@@ -2,6 +2,11 @@
 
 Status: draft, 2026-10-28. This plan replaces the to-do list that used to be in the README.
 
+**Implementation status (2026-10-28, branch `fall-dashboard-integration`, not committed yet):**
+- Done, phases 1–4: code copied into `lib/src/fall_detection/` (without the writer, demo, patient store and old detail page), texts in German, 7-day counts, per-day query, `FallDetectionScope` in `MaterialApp.builder`, status chip on the overview, Python-style tile colouring with 200 ms fade, 7-day column, "Stürze" card plus list on the patient page. "Open patient" skips the push when that patient's page is already on top.
+- Checked: 35 fall tests pass (incl. new 7-day, local-day/DST and simulated-fall tests), no analyzer errors, `flutter build web` succeeds. The template test `test/widget_test.dart` (counter) already failed before and is unrelated.
+- Open: phase 0 smoke tests, **6.2 manual tests in the browser against the live broker** (not run: test messages would also reach the Python dashboard), 6.3 end to end with Isa, Q7 broker logins, phase 6.
+
 Sources:
 - Handover guides: `FallDetection_new/_6G_integration_v3_flutter/handover/` (README, 00–04)
 - Reference Flutter code: `FallDetection_new/_6G_integration_v3_flutter/fall_dashboard/lib/src/`
@@ -46,7 +51,13 @@ Unchanged from the handover: the webapp only subscribes and reads. It never publ
 - [x] Remove the hard-coded default token (and two older commented-out tokens) from `environment.dart`, so tokens are passed only with `--dart-define` / `--dart-define-from-file`. Done 2026-10-28, see README "Run and build".
 - [x] Token: **keep the current token for now** (decision 2026-10-28). The fall queries use the same `INFLUXDB_TOKEN` as the biosignals. Rotating it and moving to a read-only token are postponed. The old tokens are still in the git history, so revisit this before production.
 - [x] CORS checked 2026-10-28 with a preflight request (`OPTIONS /api/v2/query`, no token): the OpenShift InfluxDB answers `204`, echoes back any `Origin` (tested `http://localhost:8080` and `https://example.org`), and allows the `Authorization` and `Content-Type` headers. So browser queries work locally and from the deployed site.
-- [ ] Q7: decide on broker logins and ACL (Q7 in the table above). It can come after the first test deployment, but must be done before real patients. From the live Deployment and Service (Portainer, 2026-10-28; Helm release `caregiver`, namespace `fall-dashboard`; matches `_6G_integration_v3_k3s/helm/templates/mosquitto-deployment.yaml`):
+- [ ] Q7: decide on broker logins and ACL (Q7 in the table above). It can come after the first test deployment, but must be done before real patients. **Stage 1 done on Hetzner, 2026-10-28** (via Portainer/kubectl):
+  - Secret `mosquitto-auth` holds `passwd` and `acl`, with users `mobile-app`, `patient-dashboard`, `fall-dashboard-python` and `tester`. It's mounted read-only at `/mosquitto/secrets` (`fsGroup 1883`, mode 0440).
+  - `max_packet_size 16384` is in ConfigMap `mosquitto-config`.
+  - Deployment strategy is `Recreate`, and the health checks test port 9001.
+  - After the restart: broker clean, Python dashboard reconnected after 20 s, anonymous test from outside still connects (expected until stage 2).
+  - **The Helm chart in FallDetection_new doesn't have these changes yet.** Don't run `helm upgrade` until it does.
+  - Stage 2 (logins on) waits until the mobile app, the Python dashboard and the webapp all send their logins. From the live Deployment and Service (Portainer, 2026-10-28; Helm release `caregiver`, namespace `fall-dashboard`; matches `_6G_integration_v3_k3s/helm/templates/mosquitto-deployment.yaml`):
   - Service is `ClusterIP`, so 1883/9001 are internal only. That matches the port test.
   - Only `mosquitto.conf` is mounted, from ConfigMap `mosquitto-config` via `subPath`. Password and ACL files need a **Secret plus volume mounts in the chart**. Also, `subPath` mounts don't pick up ConfigMap changes: a config change only takes effect after the pod restarts.
   - The strategy is the default `RollingUpdate`, so every config change briefly runs **two brokers** behind one Service, sharing one data volume. Phones and dashboards can land on different brokers, and alerts get lost. Change the strategy to `Recreate` in the chart **before** the auth rollout (it's a few seconds of downtime, and clients reconnect).

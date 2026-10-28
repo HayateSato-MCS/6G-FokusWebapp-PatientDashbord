@@ -34,16 +34,28 @@ class FallRecord {
   final String? deviceId;
 
   bool get isConfirmed => patientConfirmed == PatientConfirmed.yes;
+
+  /// Test fall triggered from the mobile app; they all share one observation_id.
+  bool get isSimulated => observationId == simulatedObservationId;
 }
 
-/// Fall counts shown on a patient tile and in the header.
-class FallCounts {
-  const FallCounts({required this.last30Days, required this.last24Hours});
+/// observation_id the mobile app uses for every simulated (test) fall.
+const simulatedObservationId = 'simulated-fall';
 
-  static const zero = FallCounts(last30Days: 0, last24Hours: 0);
+/// The falls of one patient on one day, newest first, one entry per fall.
+///
+/// Simulated falls count (decision 2026-10-28, plan Q5) but are not listed,
+/// so the UI shows them as "+N simuliert" under the list.
+class DayFalls {
+  const DayFalls(this.falls);
 
-  final int last30Days;
-  final int last24Hours;
+  static const empty = DayFalls([]);
+
+  final List<FallRecord> falls;
+
+  int get total => falls.length;
+  List<FallRecord> get listed => [for (final f in falls) if (!f.isSimulated) f];
+  int get simulated => total - listed.length;
 }
 
 /// The three numbers at the top of the patient detail view.

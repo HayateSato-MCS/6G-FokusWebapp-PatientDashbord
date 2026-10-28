@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:fall_dashboard/fall_dashboard.dart';
+import 'package:dca/src/fall_detection/fall_detection.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 FallEvent? parse(String topic, Map<String, Object?> payload) =>

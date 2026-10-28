@@ -27,9 +27,9 @@ abstract final class PatientConfirmed {
 
   /// Short label for history tables.
   static String label(int? value) => switch (value) {
-        yes => 'Confirmed',
-        no => 'Not a fall',
-        notAnswered => 'No response',
+        yes => 'Bestätigt',
+        no => 'Kein Sturz',
+        notAnswered => 'Keine Antwort',
         _ => '-',
       };
 }

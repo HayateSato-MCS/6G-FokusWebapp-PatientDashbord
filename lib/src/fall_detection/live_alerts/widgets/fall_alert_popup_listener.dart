@@ -82,7 +82,7 @@ class _FallAlertPopupListenerState extends State<FallAlertPopupListener> {
     switch (notification.state.kind) {
       case PatientAlertKind.pending:
         _showSnack(
-          'Possible fall: ${_label(notification.patientId)}. Waiting for the patient to answer.',
+          'Möglicher Sturz: ${_label(notification.patientId)}. Warte auf Antwort der Patient:in.',
           FallColors.pendingNotice,
           FallColors.pendingNoticeText,
           widget.controller.pendingTimeout,
@@ -145,19 +145,19 @@ class _FallAlertPopupListenerState extends State<FallAlertPopupListener> {
               ),
             ),
             const SizedBox(height: 12),
-            Text('Patient: ${_label(patientId)}'),
-            Text('Detected: ${formatLocal(notification.event.detectionTime)}'),
+            Text('Patient:in: ${_label(patientId)}'),
+            Text('Erkannt: ${formatLocal(notification.event.detectionTime)}'),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Acknowledge'),
+            child: const Text('Quittieren'),
           ),
           if (widget.onOpenPatient != null)
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Open patient'),
+              child: const Text('Patient:in öffnen'),
             ),
         ],
       ),
