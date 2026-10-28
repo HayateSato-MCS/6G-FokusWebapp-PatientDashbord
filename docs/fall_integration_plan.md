@@ -10,6 +10,7 @@ Status: draft, 2026-10-28. This plan replaces the to-do list that used to be in 
   - the webapp connects to the broker with its login (`u'patient-dashboard'`)
   - the phone test led to D7: "no" answers no longer count
 - **Local run:** see README "Run and build", plus `--web-browser-flag "--disable-web-security"`. The FHIR server refuses the `serviceaccesstoken` header from `localhost` (preflight 403), so without that flag the patient list stays empty. The deployed app isn't affected (same origin).
+- **Handover (2026-10-28):** Hayate hands the branch to Isa, who pushes it to the partner's (FOKUS's) repo. The README was rewritten as the handover document (what's new, secrets, build and deploy, checks, troubleshooting). The credentials file `dart_defines.local.json` (8 keys incl. `INFLUXDB_TOKEN`, `MQTT_USERNAME=patient-dashboard`, `MQTT_PASSWORD`) goes to Isa separately, not through git, and Isa passes it on to FOKUS.
 - **Open:**
   - 6.2 MQTT Explorer tests (popup on every page, two tabs, snack bar behind the date picker)
   - 6.3 end to end with a real wearable
@@ -119,7 +120,7 @@ Unchanged from the handover: the webapp only subscribes and reads. It never publ
   - `patientLabel`: look up the FHIR name in `InfluxProvider.patients` by `patientIdOf(...)`, falling back to the raw ID.
   - `onOpenPatient`: `navigatorKey.currentState!.push(MaterialPageRoute(builder: (_) => DataPlotsScreen(user: patient)))`.
 - [ ] For Q2, put the service, controller and listener into one `FallDetectionScope` widget, and export it from `mcs_dashboard_tab.dart` together with `AlertController` and the tile helpers. Standalone, `main.dart` uses the scope itself. Embedded, the host app wraps its own `MaterialApp.builder` with it. **Partly done:** the scope exists and `main.dart` uses it, and everything is exported from `lib/src/fall_detection/fall_detection.dart`. **Not yet exported from `mcs_dashboard_tab.dart`.** That's only needed if FOKUS embeds the dashboard in another app.
-- [ ] Known limit: the red **dialog** covers everything. The pale red/green **snack bars** are drawn in the current page's `Scaffold`, so they can end up behind an open date-picker dialog. Test this (6.2). If it's a problem, also show PENDING as a small overlay entry.
+- [x] Known limit: the red **dialog** covers everything. The pale red/green **snack bars** are drawn in the current page's `Scaffold`, so they can end up behind an open date-picker dialog. Test this (6.2). If it's a problem, also show PENDING as a small overlay entry. **Solved 2026-10-28 (user request: notices at the top):** the snack bars were replaced with a banner at the top of the window. It's an `OverlayEntry` in the Navigator's overlay, so it shows above every page and above open dialogs. It slides in, can be closed with ×, and only one shows at a time. The `scaffoldMessengerKey` is gone. Covered by `test/fall_detection/fall_alert_popup_listener_test.dart`.
 - [x] Put `MqttStatusChip(service: mqtt)` in the `HomeScreen` `AppBar`.
 
 ### 4.4 Phase 3: overview tile with Python-style colouring (D5) and 7-day count (D3)

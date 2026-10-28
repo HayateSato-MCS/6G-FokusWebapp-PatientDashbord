@@ -99,16 +99,14 @@ class FallDetectionServices {
 /// popups on every page.
 ///
 /// Put it in `MaterialApp.builder` (above the Navigator, so it covers every
-/// route and dialog) and pass the app's navigator and scaffold-messenger
-/// keys. A host app that embeds this dashboard does the same in its own
-/// `MaterialApp.builder`.
+/// route and dialog) and pass the app's navigator key. A host app that
+/// embeds this dashboard does the same in its own `MaterialApp.builder`.
 class FallDetectionScope extends StatelessWidget {
   const FallDetectionScope({
     super.key,
     required this.services,
     required this.child,
     this.navigatorKey,
-    this.scaffoldMessengerKey,
     this.patientLabel,
     this.onOpenPatient,
   });
@@ -116,7 +114,6 @@ class FallDetectionScope extends StatelessWidget {
   final FallDetectionServices services;
   final Widget child;
   final GlobalKey<NavigatorState>? navigatorKey;
-  final GlobalKey<ScaffoldMessengerState>? scaffoldMessengerKey;
   final String Function(String patientId)? patientLabel;
   final void Function(String patientId)? onOpenPatient;
 
@@ -131,7 +128,6 @@ class FallDetectionScope extends StatelessWidget {
         child: FallAlertPopupListener(
           controller: services.alerts,
           navigatorKey: navigatorKey,
-          scaffoldMessengerKey: scaffoldMessengerKey,
           patientLabel: patientLabel,
           onOpenPatient: onOpenPatient,
           child: child,

@@ -1,119 +1,176 @@
 # 6G Path Patient Dashboard Webapp
 
-Flutter source of the **Patient Dashboard Webapp** used in the 6G Path project. Fraunhofer FOKUS hosts it (OpenShift, `6g-path.apps.osc.fokus.fraunhofer.de`). It lists the patients from the FHIR server and shows their wearable biosignals (heart rate, SpO2, steps, battery) from InfluxDB.
+Flutter web app for caregivers in the 6G Path project, hosted by Fraunhofer FOKUS (OpenShift, `6g-path.apps.osc.fokus.fraunhofer.de`). It lists the patients from the FHIR server and shows their wearable biosignals (heart rate, SpO2, steps, battery) from InfluxDB.
 
-Two fall-detection features still have to be integrated: **live fall alerts** (MQTT) and **fall counts** (InfluxDB). This README describes the app as it is today. The integration work, with all current decisions, is in **[docs/fall_integration_plan.md](docs/fall_integration_plan.md)**.
-
-- Repository: `github.com/HayateSato-MCS/6G-FokusWebapp-PatientDashbord`
-- Handover package (reference code and guides the plan builds on): `FallDetection_new/_6G_integration_v3_flutter/` (`handover/` = guides, `fall_dashboard/` = reference code). Locally: `C:\Users\hayat\Documents\6G\FallDetection_new\_6G_integration_v3_flutter\`. Parts of it are outdated (FOKUS-hosted broker, 30-day/24-hour windows, old InfluxDB host); the plan lists the differences.
+**New in branch `fall-dashboard-integration`: fall detection.** Caregivers get a live popup when the 6G mobile app detects a fall, coloured patient bars, and fall counts. This README covers what's new, which secrets the build needs, and how to build and deploy it.
 
 ---
 
-## Where this app sits in the system
+## 1. What's new
+
+| Where | What the caregiver sees | Data source |
+|---|---|---|
+| **Any page** | Pale red banner at the **top of the window** "Möglicher Sturz…" while the patient is being asked (also above open dialogs; closable with ×). A **red dialog** "Sturz bestätigt / Hilfe angefordert" or "Patient:in reagiert nicht", which stays until "Quittieren" or "Patient:in öffnen". A green banner at the top for 8 s when the patient says no. | MQTT `fall/possible/<patient_id>`, `fall/alert/<patient_id>` |
+| **Overview, patient bar** | The bar changes colour with the alert state (pale red / red with "Hilfe angefordert" / green) and fades over 200 ms. New column **"Stürze (7 Tage)"**. A connection indicator ("Sturzalarm verbunden") in the header. | MQTT + InfluxDB `fall_events` |
+| **Patient page** | New card **"Stürze"**: falls on the date selected in the calendar. Tap it for the list (time, answer, help). | InfluxDB `fall_events` |
+
+Counting rules:
+- **Counted:** falls the patient confirmed, and falls the patient **didn't answer** (they may have been unable to).
+- **Not counted:** falls the patient answered with **"no"**.
+- **Simulated falls** (test button in the 6G mobile app) count, but appear in the list only as "+N simuliert".
+- Each fall counts once, even if it's stored twice.
+- "7 Tage" is a rolling 7 × 24 h. The patient page uses the local calendar day.
+
+The webapp only **reads**: it subscribes to MQTT and queries InfluxDB. It never publishes or writes. The new code is in [lib/src/fall_detection/](lib/src/fall_detection/) and is wired into `main.dart`, `home_screen.dart`, `user_data_item.dart` and `data_plot_screen.dart`.
+
+### How it fits together
 
 ```
-SmarKo wearable --BLE--> 6G mobile app --HTTPS /predict--> MCS inference server (run by MCS)
+SmarKo wearable --BLE--> 6G mobile app --HTTPS--> MCS inference server (fall model)
                               |
-                              +--MQTT WSS fall/possible, fall/alert--> MCS mosquitto broker
-                              |                                        (fall-mqtt.smarko-health.de)
-                              |                                              |
-                              +--InfluxDB write (biosignals, fall_events)--> FOKUS InfluxDB (OpenShift)
-                                                                             |      |
-                                         Patient Dashboard Webapp  <---------+------+
-                                         (this repo; only subscribes and reads)
+                              +--MQTT (WSS 443): fall/possible, fall/alert--> MCS MQTT broker
+                              |                                               fall-mqtt.smarko-health.de
+                              +--InfluxDB write: biosignals, fall_events--> FOKUS InfluxDB (OpenShift)
+                                                                                 |        |
+                                         Patient Dashboard Webapp (this repo) <---+--------+
+                                         + FHIR server (FOKUS) for the patient list
 ```
 
-MCS runs the inference server and the MQTT broker. The InfluxDB and this webapp are on the FOKUS side. The webapp **never publishes** to MQTT and **never writes** to InfluxDB.
+**Patient ID:** the 6G mobile app identifies a patient by `patient_id`, and that must be **the patient's FHIR ID**. It's the "ID:" shown on the patient bar. Set it in the mobile app's settings. If the IDs don't match exactly, nothing appears for that patient.
 
 ---
 
-## The app today
+## 2. Configuration and secrets
+
+Everything is passed at build time with `--dart-define` (or `--dart-define-from-file`). Nothing secret is in the source code.
+
+| Key | Used for | Secret? | Provided by | Default in code |
+|---|---|---|---|---|
+| `INFLUXDB_URL` | InfluxDB (biosignals + `fall_events`) | no | – | `https://6g-path.apps.osc.fokus.fraunhofer.de/influxdb` |
+| `INFLUXDB_ORG` | " | no | – | `mcs-data-labs` |
+| `INFLUXDB_BUCKET` | " | no | – | `6g-path` |
+| **`INFLUXDB_TOKEN`** | Reading biosignals and `fall_events` | **yes** | FOKUS (it's FOKUS's InfluxDB). The credentials file from MCS contains the token currently in use. | **none, required** |
+| `MQTT_URL` | Live fall alerts | no | – | `wss://fall-mqtt.smarko-health.de` |
+| `MQTT_PORT` | " | no | – | `443` |
+| **`MQTT_USERNAME`** | Login at the MCS broker | low | MCS: `patient-dashboard` | empty |
+| **`MQTT_PASSWORD`** | " | **yes** | MCS, in the credentials file | empty |
+| `BACKEND_SCHEME`, `BACKEND_HOST` | FHIR server (`<scheme>://<host>/fhir/`) | no | – | `https`, `6g-path.apps.osc.fokus.fraunhofer.de` |
+
+**The credentials file.** MCS hands over a file `dart_defines.local.json` separately, not through git. It contains all keys above, including `INFLUXDB_TOKEN`, `MQTT_USERNAME` and `MQTT_PASSWORD`. The repo has a template without secrets, [dart_defines.example.json](dart_defines.example.json).
+- **Local build:** put the file in the repo root. `*.local.json` is in `.gitignore`, so it can't be committed by accident.
+- **CI/CD:** store the two secrets in your secret store, and pass each key as `--dart-define=KEY=value` instead of using the file.
+- **Never commit it**, and don't send it by unencrypted email or chat.
+
+**Everything passed this way ends up in the built JavaScript.** Anyone who opens the webapp can read these values. That's why:
+- The MQTT account `patient-dashboard` is **read-only**: the broker lets it subscribe to `fall/possible/#` and `fall/alert/#`, and nothing else.
+- The InfluxDB token should be **read-only, limited to bucket `6g-path`**. If the token in the credentials file has more rights, please create a read-only one and use that instead.
+
+**Planned:** MCS will soon switch the broker to require a login, with a date to be announced. Builds made with `MQTT_USERNAME`/`MQTT_PASSWORD` keep working. Builds without them will stop receiving alerts after the switch.
+
+Not changed by this branch: the FHIR request header `serviceaccesstoken` is still hard-coded in [fhir_handler.dart](lib/src/data_handlers/fhir_handler.dart), as before.
+
+---
+
+## 3. Build and deploy
+
+Tested with **Flutter 3.38 (stable)**. The package requires Dart SDK `>=3.3.1`.
+
+```powershell
+# 1. get the branch
+git checkout fall-dashboard-integration
+flutter pub get
+
+# 2. credentials: put the file from MCS in the repo root
+#    (or use --dart-define=KEY=value from your CI secret store)
+#    dart_defines.local.json
+
+# 3. tests for the fall features (40 tests, no network needed)
+flutter test test/fall_detection
+
+# 4. build
+flutter build web --release --dart-define-from-file=dart_defines.local.json
+#    output: build/web/
+```
+
+5. **Deploy `build/web/`** the same way as the current webapp.
+   - **Serve it from the same origin as the FHIR server** (`https://6g-path.apps.osc.fokus.fraunhofer.de`), as today. The FHIR server rejects the `serviceaccesstoken` header from other origins (CORS), so the patient list would stay empty. Alternatively, allow that header for the new origin in the FHIR server's CORS settings.
+   - InfluxDB (`/influxdb`) accepts requests from any origin.
+6. **Network:** caregivers' browsers need outgoing **WSS on port 443** to `fall-mqtt.smarko-health.de`.
+
+### Checks after deploying
+
+1. Overview header shows **"Sturzalarm verbunden"** (green).
+2. "Stürze (7 Tage)" shows numbers, not `n. v.`.
+3. Trigger a **simulated fall** in the 6G mobile app for a patient whose app ID is that patient's FHIR ID:
+   - the bar turns pale red, and a pale red banner slides in at the top
+   - after the answer: green (patient said "no") or the red dialog (no answer / help requested)
+   - about 3 s later, the counts go up, unless the patient answered "no"
+4. Open the webapp in two tabs: both get the popup.
+5. Tell MCS when the deployed version is up. MCS can confirm in the broker log that it connects as `patient-dashboard`.
+
+---
+
+## 4. Running locally (development)
+
+```powershell
+flutter run -d chrome --web-port 8080 `
+  --dart-define-from-file=dart_defines.local.json `
+  --web-browser-flag "--disable-web-security"
+```
+
+The last flag is only needed locally. `localhost` is a different origin from the FHIR server, which rejects the `serviceaccesstoken` header from there, so without the flag the patient list stays empty. Flutter starts its own Chrome window with a temporary profile, so your normal browser isn't affected. In the terminal, `r` reloads and `R` restarts. Never use the flag for anything except local development.
+
+Manual alert tests without a phone: MCS can provide a test account for the broker on request. With it, test messages can be published with MQTT Explorer (`ws://` + TLS on, host `fall-mqtt.smarko-health.de`, port 443, basepath `/`). Use a real test patient's FHIR ID, never retain a message, and coordinate with MCS first.
+
+---
+
+## 5. Troubleshooting
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| Header shows "Sturzalarm getrennt" | Broker unreachable, or the login is missing or wrong (once logins are required) | Check `MQTT_URL`/`MQTT_PORT`, outgoing 443, and the credentials. Then contact MCS. |
+| "Stürze (7 Tage)" shows `n. v.` | `INFLUXDB_TOKEN` missing or wrong | Browser console (F12): `INFLUXDB_TOKEN is not set` or HTTP 401. Fix the build parameters. |
+| Patient list empty | FHIR request blocked: CORS when not served from the FHIR origin, or locally without the flag | See sections 3 and 4. |
+| Falls show nothing for one patient | The patient ID in the mobile app isn't that patient's FHIR ID | Set the app's patient ID to the "ID:" on the bar. |
+| Dialog says "Empfangen: …" instead of "Erkannt: …" | The mobile app's message had no usable detection time, so the receive time is shown | Report it to the mobile app team (Isa). |
+| A fall shows live but not in the counts | The fall is stored a moment after the answer, or the patient answered "no" | Wait a few seconds. "No" answers don't count, on purpose. |
+
+---
+
+## 6. Code overview
 
 | Part | File | What it does |
 |---|---|---|
-| Entry point | [lib/main.dart](lib/main.dart) | `MultiProvider` with `InfluxProvider`, `MaterialApp` titled "6G Path Dashboard", home = `HomeScreen` |
-| Library export | [lib/mcs_dashboard_tab.dart](lib/mcs_dashboard_tab.dart) | Exports `DataPlotScreen`, `BatteryComponent`, `StandaloneMeasurementCard`, FHIR utils, so the dashboard can be embedded as a tab in another app |
-| Configuration | [lib/src/environment.dart](lib/src/environment.dart) | Backend host, FHIR URL, InfluxDB URL/org/bucket/token, all overridable with `--dart-define` |
-| Patients | [lib/src/data_handlers/fhir_handler.dart](lib/src/data_handlers/fhir_handler.dart), [lib/src/providers/influx_provider.dart](lib/src/providers/influx_provider.dart) | Loads FHIR `Patient` resources |
-| Biosignals | [lib/src/data_handlers/influx_db_handler.dart](lib/src/data_handlers/influx_db_handler.dart) | Queries InfluxDB **directly from the client**, filtered by the tag `user` |
-| Patient list | [lib/src/screens/home_screen.dart](lib/src/screens/home_screen.dart) | "Übersicht der Patient:innen", one `UserDataItem` per patient |
-| Patient tile | [lib/src/screens/components/user_data_item.dart](lib/src/screens/components/user_data_item.dart) | Latest values, refreshed every 15 s; tap opens `DataPlotsScreen` |
-| Detail view | [lib/src/screens/data_plot_screen.dart](lib/src/screens/data_plot_screen.dart) | Charts per patient, week navigator |
+| Entry point | [lib/main.dart](lib/main.dart) | Providers, `MaterialApp`; `FallDetectionScope` in `MaterialApp.builder`, which puts the fall popup above every page |
+| Configuration | [lib/src/environment.dart](lib/src/environment.dart) | All `--dart-define` keys from section 2 |
+| Patients | [fhir_handler.dart](lib/src/data_handlers/fhir_handler.dart), [influx_provider.dart](lib/src/providers/influx_provider.dart) | FHIR `Patient` list |
+| Biosignals | [influx_db_handler.dart](lib/src/data_handlers/influx_db_handler.dart) | InfluxDB queries from the browser, tag `user` = FHIR ID |
+| Overview | [home_screen.dart](lib/src/screens/home_screen.dart), [user_data_item.dart](lib/src/screens/components/user_data_item.dart) | Patient bars with alert colouring and "Stürze (7 Tage)"; tapping a bar acknowledges its alert |
+| Patient page | [data_plot_screen.dart](lib/src/screens/data_plot_screen.dart) | Charts, week navigator, "Stürze" card |
+| Fall features | [lib/src/fall_detection/](lib/src/fall_detection/) | `live_alerts/` (MQTT, alert states, popups), `fall_history/` (InfluxDB queries, counts, card), `fall_detection_scope.dart`, `patient_id.dart` |
+| Library export | [lib/mcs_dashboard_tab.dart](lib/mcs_dashboard_tab.dart) | Widgets for embedding the dashboard as a tab. The fall features aren't exported there yet; a host app would need `FallDetectionScope` in its own `MaterialApp.builder`. |
 
-**Patient key:** a tile uses the FHIR `Patient.fhirId` as `userId` and queries InfluxDB with `user == fhirId`.
+### Behaviour rules (please keep)
 
-### Configuration (`--dart-define`)
+- A red alert stays until acknowledged. A later "no" for the same patient doesn't hide it.
+- "Möglicher Sturz" clears after 60 s without an answer. Green notes show for 8 s.
+- `needs_help` only counts as the JSON value `true`. A missing or unknown answer counts as "no answer", to err on the safe side.
+- Messages with `fall_detected` other than `true` are ignored.
+- MQTT messages aren't stored by the broker. Falls that happen while the webapp is closed only appear in the counts.
+- Every open tab has its own alert state: acknowledging in one tab doesn't clear another.
 
-| Key | Default |
-|---|---|
-| `BACKEND_SCHEME` | `https` |
-| `BACKEND_HOST` | `6g-path.apps.osc.fokus.fraunhofer.de` (FHIR at `/fhir/`) |
-| `INFLUXDB_URL` | `https://6g-path.apps.osc.fokus.fraunhofer.de/influxdb` |
-| `INFLUXDB_ORG` | `mcs-data-labs` |
-| `INFLUXDB_BUCKET` | `6g-path` |
-| `MQTT_URL` | `wss://fall-mqtt.smarko-health.de` (MCS broker for live fall alerts) |
-| `MQTT_PORT` | `443` |
-| `MQTT_USERNAME` / `MQTT_PASSWORD` | empty. Only needed once the broker requires logins (plan Q7) |
-| `INFLUXDB_TOKEN` | **none, required.** Without it every InfluxDB query fails with 401, and the console logs `INFLUXDB_TOKEN is not set`. Use a read-only token for bucket `6g-path`. |
-
-Never put a token in source code. Until 2026-10-28, `environment.dart` had a default token (plus two older ones in comments). They're gone from the code now, but still in the git history of the first two commits. For now the current token stays in use (decision 2026-10-28). Rotating it is postponed, so revisit that before production. Also note that a web build compiles the `--dart-define` values into `main.dart.js`, so anyone who opens the webapp can read the token. That's why it must be **read-only**.
-
-### InfluxDB instances: which one to use
-
-FOKUS has run two InfluxDB instances for 6G Path:
+### InfluxDB instances
 
 | Instance | URL | Status |
 |---|---|---|
-| Original FOKUS instance | `https://influxdb.internal.e-healthservice.de` | **Retired.** FOKUS hosted this one first and moved away from it because of problems with it. Don't use it. |
-| OpenShift instance | `https://6g-path.apps.osc.fokus.fraunhofer.de/influxdb` | **Current.** This dashboard and the 6G mobile app both use it. Wherever "the instance on OpenShift" is mentioned, this is the one meant. |
-
-The handover documents (`_6G_integration_v3_flutter/handover/`) still name `influxdb.internal.e-healthservice.de` in their examples and smoke-test commands. Use the OpenShift URL instead. The old URL also shows up as a commented-out default in [lib/src/environment.dart](lib/src/environment.dart). The FHIR backend moved the same way: `BACKEND_HOST` changed from `internal.e-healthservice.de` to `6g-path.apps.osc.fokus.fraunhofer.de`.
-
-### Run and build
-
-Pass the token in one of two ways:
-
-```powershell
-flutter pub get
-
-# a) on the command line
-flutter run -d chrome --dart-define=INFLUXDB_TOKEN=<token>
-flutter build web --dart-define=INFLUXDB_TOKEN=<token>
-
-# b) from a local file (not committed: *.local.json is in .gitignore)
-Copy-Item dart_defines.example.json dart_defines.local.json   # then put the token in
-flutter run -d chrome --dart-define-from-file=dart_defines.local.json
-flutter build web --dart-define-from-file=dart_defines.local.json
-```
-
-For deployment (FOKUS), inject the token from the CI/CD secret store at build time, the same way as option a).
+| OpenShift instance | `https://6g-path.apps.osc.fokus.fraunhofer.de/influxdb` | **Current.** Used by this webapp and the 6G mobile app. |
+| Original FOKUS instance | `https://influxdb.internal.e-healthservice.de` | Retired; don't use it. Still mentioned in older documents and in a comment in `environment.dart`. |
 
 ---
 
-## Fall-detection integration
+## 7. Contacts
 
-Implemented on branch `fall-dashboard-integration` (2026-10-28) in [lib/src/fall_detection/](lib/src/fall_detection/), wired into `main.dart`, the overview (`user_data_item.dart`, `home_screen.dart`) and the patient page (`data_plot_screen.dart`). Not yet tested in a browser against the live broker. The plan, with what's done and what's still open, is in **[docs/fall_integration_plan.md](docs/fall_integration_plan.md)**. In short:
+- **Fall features, MCS MQTT broker, credentials:** Hayate Sato, MCS Data Labs
+- **6G mobile app** (patient ID setting, simulated falls): Isa, MCS Data Labs
 
-| Where | What the caregiver gets | Data source |
-|---|---|---|
-| Anywhere in the webapp | A popup when a fall is detected, and a red dialog for "help requested" / "did not respond" that stays until acknowledged | MQTT `fall/possible/<patient_id>`, `fall/alert/<patient_id>` on the MCS broker `wss://fall-mqtt.smarko-health.de` |
-| Overview, each patient bar | Card colouring like the Python fall dashboard (pale red pending, red alert, green resolved), plus the **fall count of the last 7 days** | MQTT + InfluxDB `fall_events` |
-| Patient page | **Fall count for the date selected** in the calendar | InfluxDB `fall_events` |
-
-Both counts leave out falls the patient answered with "no". Falls answered "yes" and falls without an answer count (plan D7).
-
-Patient key: the 6G mobile app's `patient_id` **is** the patient's FHIR ID, so fall data matches the existing tiles directly (`fhirId`). Delivery: pushed to a new branch on FOKUS's repo.
-
-### Behaviour rules not to change
-
-- An open red ALERT stays until acknowledged. A later "no" for the same patient must not hide it.
-- PENDING clears after 60 s, and RESOLVED is shown for 8 s. Keep these unless agreed with MCS.
-- `needs_help` only counts as the JSON boolean `true`. A missing or unknown `patient_confirmed` counts as `not_answered`.
-- Ignore any message where `fall_detected` is not `true`.
-- MQTT messages are not retained. Falls that happen while the dashboard is closed only show up in the history.
-
----
-
-## Contact
-
-Fall-detection integration and test coordination: Hayate Sato, MCS Data Labs.
+MCS's planning notes for this integration (decisions, open points) are in [docs/fall_integration_plan.md](docs/fall_integration_plan.md).

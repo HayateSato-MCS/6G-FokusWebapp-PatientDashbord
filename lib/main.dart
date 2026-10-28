@@ -12,7 +12,6 @@ import 'package:intl/intl.dart';
 // Fall alerts and counts: one instance per running app (each browser tab).
 final fallDetection = FallDetectionServices.fromEnvironment();
 final navigatorKey = GlobalKey<NavigatorState>();
-final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Ensure async execution
@@ -36,12 +35,10 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       navigatorKey: navigatorKey,
-      scaffoldMessengerKey: scaffoldMessengerKey,
       // Above the Navigator, so fall popups show on every page and dialog.
       builder: (context, child) => FallDetectionScope(
         services: fallDetection,
         navigatorKey: navigatorKey,
-        scaffoldMessengerKey: scaffoldMessengerKey,
         patientLabel: (patientId) {
           final patient = _findPatient(context, patientId);
           return patient == null ? patientId : patientDisplayName(patient);

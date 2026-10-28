@@ -8,20 +8,20 @@ import '../fall_event.dart';
 
 /// Shows popups for live fall events, on top of whatever page is open.
 ///
-/// * possible fall -> pale red snack bar, until the patient answers
+/// * possible fall -> pale red banner at the top, until the patient answers
 /// * caregiver alert -> red dialog that must be acknowledged
-/// * dismissed by the patient -> green snack bar for a few seconds
+/// * dismissed by the patient -> green banner at the top for a few seconds
 ///
-/// Place it in `MaterialApp.builder` and pass the app's [navigatorKey] and
-/// [scaffoldMessengerKey] (that context sits above the Navigator, so the keys
-/// are needed to show dialogs). Inside a page, the keys can be omitted.
+/// Banners and dialogs go into the Navigator's overlay, so they appear above
+/// every page and above dialogs that are already open (e.g. a date picker).
+/// Place it in `MaterialApp.builder` and pass the app's [navigatorKey] (that
+/// context sits above the Navigator). Inside a page, the key can be omitted.
 class FallAlertPopupListener extends StatefulWidget {
   const FallAlertPopupListener({
     super.key,
     required this.controller,
     required this.child,
     this.navigatorKey,
-    this.scaffoldMessengerKey,
     this.patientLabel,
     this.onOpenPatient,
   });
@@ -29,7 +29,6 @@ class FallAlertPopupListener extends StatefulWidget {
   final AlertController controller;
   final Widget child;
   final GlobalKey<NavigatorState>? navigatorKey;
-  final GlobalKey<ScaffoldMessengerState>? scaffoldMessengerKey;
 
   /// Maps a patient ID to the name the caregiver knows. Defaults to the ID.
   final String Function(String patientId)? patientLabel;
@@ -45,6 +44,7 @@ class FallAlertPopupListener extends StatefulWidget {
 class _FallAlertPopupListenerState extends State<FallAlertPopupListener> {
   StreamSubscription<FallAlertNotification>? _subscription;
   final Set<String> _openDialogs = {};
+  OverlayEntry? _banner;
 
   @override
   void initState() {
@@ -64,53 +64,76 @@ class _FallAlertPopupListenerState extends State<FallAlertPopupListener> {
   @override
   void dispose() {
     _subscription?.cancel();
+    _removeBanner();
     super.dispose();
   }
 
   String _label(String patientId) => widget.patientLabel?.call(patientId) ?? patientId;
 
-  ScaffoldMessengerState? get _messenger =>
-      widget.scaffoldMessengerKey?.currentState ?? ScaffoldMessenger.maybeOf(context);
+  NavigatorState? get _navigator => widget.navigatorKey?.currentState ?? Navigator.maybeOf(context);
 
-  BuildContext? get _dialogContext {
-    final navigator = widget.navigatorKey?.currentState ?? Navigator.maybeOf(context);
-    return navigator?.overlay?.context;
-  }
+  BuildContext? get _dialogContext => _navigator?.overlay?.context;
 
   void _onNotification(FallAlertNotification notification) {
     if (!mounted) return;
     switch (notification.state.kind) {
       case PatientAlertKind.pending:
-        _showSnack(
-          'Möglicher Sturz: ${_label(notification.patientId)}. Warte auf Antwort der Patient:in.',
-          FallColors.pendingNotice,
-          FallColors.pendingNoticeText,
-          widget.controller.pendingTimeout,
+        _showBanner(
+          text: 'Möglicher Sturz: ${_label(notification.patientId)}. Warte auf Antwort der Patient:in.',
+          icon: Icons.warning_amber_rounded,
+          background: FallColors.pendingNotice,
+          foreground: FallColors.pendingNoticeText,
+          border: FallColors.pendingBorder,
+          duration: widget.controller.pendingTimeout,
         );
       case PatientAlertKind.resolved:
-        _showSnack(
-          '${_label(notification.patientId)}: ${notification.state.notice}',
-          FallColors.resolvedNotice,
-          FallColors.resolvedNoticeText,
-          widget.controller.resolvedDisplay,
+        _showBanner(
+          text: '${_label(notification.patientId)}: ${notification.state.notice}',
+          icon: Icons.check_circle_outline,
+          background: FallColors.resolvedNotice,
+          foreground: FallColors.resolvedNoticeText,
+          border: FallColors.resolvedBorder,
+          duration: widget.controller.resolvedDisplay,
         );
       case PatientAlertKind.alert:
-        _messenger?.hideCurrentSnackBar();
+        _removeBanner();
         _showAlertDialog(notification);
     }
   }
 
-  void _showSnack(String text, Color background, Color foreground, Duration duration) {
-    final messenger = _messenger;
-    if (messenger == null) return;
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(text, style: TextStyle(color: foreground, fontWeight: FontWeight.w600)),
-        backgroundColor: background,
+  /// One banner at a time at the top of the window; a new one replaces the old.
+  void _showBanner({
+    required String text,
+    required IconData icon,
+    required Color background,
+    required Color foreground,
+    required Color border,
+    required Duration duration,
+  }) {
+    final overlay = _navigator?.overlay;
+    if (overlay == null) return;
+    _removeBanner();
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => _TopBanner(
+        text: text,
+        icon: icon,
+        background: background,
+        foreground: foreground,
+        border: border,
         duration: duration,
-        behavior: SnackBarBehavior.floating,
-      ));
+        onClosed: () {
+          if (_banner == entry) _removeBanner();
+        },
+      ),
+    );
+    _banner = entry;
+    overlay.insert(entry);
+  }
+
+  void _removeBanner() {
+    _banner?.remove();
+    _banner = null;
   }
 
   Future<void> _showAlertDialog(FallAlertNotification notification) async {
@@ -199,4 +222,108 @@ class _FallAlertPopupListenerState extends State<FallAlertPopupListener> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+/// Notice that slides in at the top of the window and closes itself after
+/// [duration], or earlier with its close button.
+class _TopBanner extends StatefulWidget {
+  const _TopBanner({
+    required this.text,
+    required this.icon,
+    required this.background,
+    required this.foreground,
+    required this.border,
+    required this.duration,
+    required this.onClosed,
+  });
+
+  final String text;
+  final IconData icon;
+  final Color background;
+  final Color foreground;
+  final Color border;
+  final Duration duration;
+  final VoidCallback onClosed;
+
+  @override
+  State<_TopBanner> createState() => _TopBannerState();
+}
+
+class _TopBannerState extends State<_TopBanner> with SingleTickerProviderStateMixin {
+  late final _animation = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 250),
+  )..forward();
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(widget.duration, _close);
+  }
+
+  Future<void> _close() async {
+    _timer?.cancel();
+    if (!mounted) return;
+    await _animation.reverse();
+    if (mounted) widget.onClosed();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _animation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curved = CurvedAnimation(parent: _animation, curve: Curves.easeOutCubic);
+    return Positioned(
+      top: 12,
+      left: 12,
+      right: 12,
+      child: SafeArea(
+        child: SlideTransition(
+          position: Tween(begin: const Offset(0, -1.5), end: Offset.zero).animate(curved),
+          child: FadeTransition(
+            opacity: curved,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 640),
+                child: Material(
+                  color: widget.background,
+                  elevation: 6,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: widget.border),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
+                    child: Row(
+                      children: [
+                        Icon(widget.icon, color: widget.foreground),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            widget.text,
+                            style: TextStyle(color: widget.foreground, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Schließen',
+                          icon: Icon(Icons.close, color: widget.foreground, size: 20),
+                          onPressed: _close,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
