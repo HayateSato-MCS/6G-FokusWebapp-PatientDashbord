@@ -26,15 +26,40 @@ The webapp only **reads**: it subscribes to MQTT and queries InfluxDB. It never 
 ### How it fits together
 
 ```
-SmarKo wearable --BLE--> 6G mobile app --HTTPS--> MCS inference server (fall model)
-                              |
-                              +--MQTT (WSS 443): fall/possible, fall/alert--> MCS MQTT broker
-                              |                                               fall-mqtt.smarko-health.de
-                              +--InfluxDB write: biosignals, fall_events--> FOKUS InfluxDB (OpenShift)
-                                                                                 |        |
-                                         Patient Dashboard Webapp (this repo) <---+--------+
-                                         + FHIR server (FOKUS) for the patient list
+                     +------------+   BLE    +--------------------+
+    Patient          |  SmarKo    | ──────►  |   6G Mobile App    |
+     Level           |  Wearable  |          |   (React Native)   |
+                     +------------+          +----------+---------+
+                                                        |
+                                    +───────────────────+──────────────────────+
+                                    |                   |                      |
+                               HTTPS POST           MQTT WSS             InfluxDB write
+                               /predict          fall/possible,          (biosignals +
+                               (run model)        fall/alert              fall events)
+                                    |                   |                      |
+                                    v                   v                      v
+                     +────────────────────────────────────────────+  +────────────────────────────────────+
+                     |                 MCS server                 |  |             FOKUS side             |
+                     |                                            |  |                                    |
+                     |  [ Inference Server ]     [ MQTT broker ]  |  | [ FOKUS InfluxDB ]                 |
+FOKUS Hardware       |    fall detection           mosquitto      |  |   OpenShift instance               |
+ /Cloud Level        |    & model API  fall-mqtt.smarko-health.de |  |         |  fall counts             |
+                     |                           (WSS, port 443)  |  |         v                          |
+                     |                                  +───────────────► [ Patient Dashboard Webapp ]    |
+                     |  (MCS runs both;          live alerts,     |  |     this repo:                     |
+                     |   FOKUS does not           MQTT over WSS   |  |     + live fall alert popups       |
+                     |   need to touch them)                      |  |     + fall counts (sec. 1)         |
+                     |                                            |  |     + patients from [ FHIR ]       |
+                     +────────────────────────────────────────────+  +────────────────────────────────────+
 ```
+
+The flow for one fall:
+1. The 6G mobile app sends a 9-second sensor window to the MCS inference server, which answers "fall" or "no fall".
+2. On "fall", the app publishes `fall/possible/<patient_id>` to the MCS broker. It then asks the patient "Did you fall?" and, if yes, "Do you need help?" (10 s each).
+3. After the answers, or the timeout, it publishes `fall/alert/<patient_id>` with the answers, and writes one `fall_events` row into FOKUS's InfluxDB.
+4. The webapp gets both MQTT messages live (popup, bar colour). It reads the counts from `fall_events`.
+
+The diagram is based on the one in the earlier handover guide (`00_system_overview.md`), with one change: the MQTT broker is **run by MCS**, not by FOKUS. FOKUS no longer needs to set up a broker.
 
 **Patient ID:** the 6G mobile app identifies a patient by `patient_id`, and that must be **the patient's FHIR ID**. It's the "ID:" shown on the patient bar. Set it in the mobile app's settings. If the IDs don't match exactly, nothing appears for that patient.
 
