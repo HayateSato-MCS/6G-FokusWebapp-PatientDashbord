@@ -13,11 +13,10 @@ class MCSDashboardEnvironment {
       // defaultValue: "https://influxdb.internal.e-healthservice.de");
       defaultValue: "https://6g-path.apps.osc.fokus.fraunhofer.de/influxdb");
 
-  static const String influxDBAPIToken = String.fromEnvironment("INFLUXDB_TOKEN",
-      defaultValue:
-          // "RyInlR4KTTOrUgfsNnNlRSLWVXnG3whoi9DRX-9gomWkJVKVjLJsrM5AX8e_1v8L6Qt3r1mVn4TzAzwzaDIdhg==");
-          // "w7GmdmSlfJMvoz7dWHHe5NG_-wCAz2sVMBOIqvhoErCQ3703cLcSZ-V7vnuZYlO_4P4FrQky4yINSD6Pk3TknQ==");
-          "lx25Sf1FXNoNwMP96d3pldA5pf3qKBzf-xSzyedZvi5smUOaEpg0HFEK_DGbcHUsVRsVI8fDIy5mc02fjbuVsA==");
+  // No default on purpose: never commit a token. Pass it at build/run time with
+  // --dart-define=INFLUXDB_TOKEN=... or --dart-define-from-file=dart_defines.local.json.
+  static const String influxDBAPIToken = String.fromEnvironment("INFLUXDB_TOKEN");
+  static const bool hasInfluxDBToken = influxDBAPIToken != "";
   static const String influxDBOrg =
       String.fromEnvironment("INFLUXDB_ORG", defaultValue: "mcs-data-labs");
   static const String influxDBBucket =

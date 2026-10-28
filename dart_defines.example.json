@@ -1,0 +1,6 @@
+{
+  "INFLUXDB_URL": "https://6g-path.apps.osc.fokus.fraunhofer.de/influxdb",
+  "INFLUXDB_ORG": "mcs-data-labs",
+  "INFLUXDB_BUCKET": "6g-path",
+  "INFLUXDB_TOKEN": "<read-only token for bucket 6g-path>"
+}

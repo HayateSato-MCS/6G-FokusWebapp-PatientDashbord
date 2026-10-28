@@ -19,7 +19,11 @@ class InfluxDBHandler {
 
   InfluxDBHandler() {
     debugPrint(
-        "influx DB config is: Host {${MCSDashboardEnvironment.influxDBHost}, Token: {${MCSDashboardEnvironment.influxDBAPIToken}}, Org: {${MCSDashboardEnvironment.influxDBOrg}}, Bucket: {${MCSDashboardEnvironment.influxDBBucket}}");
+        "influx DB config is: Host {${MCSDashboardEnvironment.influxDBHost}}, Token: {${MCSDashboardEnvironment.hasInfluxDBToken ? 'set' : 'MISSING'}}, Org: {${MCSDashboardEnvironment.influxDBOrg}}, Bucket: {${MCSDashboardEnvironment.influxDBBucket}}");
+    if (!MCSDashboardEnvironment.hasInfluxDBToken) {
+      debugPrint(
+          "INFLUXDB_TOKEN is not set. Build/run with --dart-define=INFLUXDB_TOKEN=... (see README); InfluxDB queries will fail with 401.");
+    }
     initBucketClient();
   }
 

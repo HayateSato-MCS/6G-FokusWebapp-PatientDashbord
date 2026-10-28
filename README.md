@@ -51,7 +51,9 @@ MCS runs the inference server and the MQTT broker. The InfluxDB and this webapp 
 | `INFLUXDB_URL` | `https://6g-path.apps.osc.fokus.fraunhofer.de/influxdb` |
 | `INFLUXDB_ORG` | `mcs-data-labs` |
 | `INFLUXDB_BUCKET` | `6g-path` |
-| `INFLUXDB_TOKEN` | a default token is hard-coded in `environment.dart` and committed to git. Remove it and rotate it (plan, phase 0) |
+| `INFLUXDB_TOKEN` | **none, required.** Without it every InfluxDB query fails with 401, and the console logs `INFLUXDB_TOKEN is not set`. Use a read-only token for bucket `6g-path`. |
+
+Never put a token in source code. Until 2026-10-28, `environment.dart` had a default token (plus two older ones in comments). They're gone from the code now, but still in the git history of the first two commits. For now the current token stays in use (decision 2026-10-28). Rotating it is postponed, so revisit that before production. Also note that a web build compiles the `--dart-define` values into `main.dart.js`, so anyone who opens the webapp can read the token. That's why it must be **read-only**.
 
 ### InfluxDB instances: which one to use
 
@@ -66,11 +68,22 @@ The handover documents (`_6G_integration_v3_flutter/handover/`) still name `infl
 
 ### Run and build
 
+Pass the token in one of two ways:
+
 ```powershell
 flutter pub get
+
+# a) on the command line
 flutter run -d chrome --dart-define=INFLUXDB_TOKEN=<token>
 flutter build web --dart-define=INFLUXDB_TOKEN=<token>
+
+# b) from a local file (not committed: *.local.json is in .gitignore)
+Copy-Item dart_defines.example.json dart_defines.local.json   # then put the token in
+flutter run -d chrome --dart-define-from-file=dart_defines.local.json
+flutter build web --dart-define-from-file=dart_defines.local.json
 ```
+
+For deployment (FOKUS), inject the token from the CI/CD secret store at build time, the same way as option a).
 
 ---
 
@@ -84,7 +97,7 @@ Not built yet. The full plan, with phases, open questions and checklists, is in 
 | Overview, each patient bar | Card colouring like the Python fall dashboard (pale red pending, red alert, green resolved), plus the **fall count of the last 7 days** | MQTT + InfluxDB `fall_events` |
 | Patient page | **Fall count for the date selected** in the calendar | InfluxDB `fall_events` |
 
-The biggest open item is the **patient ID mapping**. Fall data is keyed by the 6G mobile app's `patient_id`, but this app keys patients by FHIR `fhirId`. See the plan, Q1.
+Patient key: the 6G mobile app's `patient_id` **is** the patient's FHIR ID, so fall data matches the existing tiles directly (`fhirId`). Delivery: pushed to a new branch on FOKUS's repo.
 
 ### Behaviour rules not to change
 
