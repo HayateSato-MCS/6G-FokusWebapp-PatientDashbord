@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patient Dashboard Fall Features</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Schibsted+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Plan: a page to project in a handover meeting. The two features carry the
+   product's own alert colours; red and blue follow each feature through the
+   diagram. Layout: status, two features side by side, picture, then steps. */
+:root {
+  color-scheme: light;
+  --paper: #f5f7f9;
+  --surface: #ffffff;
+  --ink: #16202c;
+  --muted: #55616f;
+  --line: #d6dce3;
+  --accent: #17405f;
+  --f1: #c81e1e;
+  --f2: #1c5db5;
+  --done: #15803d;
+  --font-display: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #10151c;
+    --surface: #18202a;
+    --ink: #e9edf2;
+    --muted: #a0abb8;
+    --line: #2f3a47;
+    --accent: #8fc1e6;
+    --f1: #f87f7f;
+    --f2: #80b4ff;
+    --done: #5fd38a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #10151c;
+  --surface: #18202a;
+  --ink: #e9edf2;
+  --muted: #a0abb8;
+  --line: #2f3a47;
+  --accent: #8fc1e6;
+  --f1: #f87f7f;
+  --f2: #80b4ff;
+  --done: #5fd38a;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1.0625rem;
+  line-height: 1.5;
+}
+main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 3rem;
+  display: grid;
+  gap: 2.75rem;
+}
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 0;
+  text-wrap: balance;
+}
+h1 { font-size: clamp(2rem, 4.4vw, 3rem); letter-spacing: -0.01em; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.125rem; }
+p { margin: 0; }
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+section { display: grid; gap: 1.25rem; }
+
+/* Header and status */
+.intro { display: grid; gap: 1.25rem; }
+.project {
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+.lead { font-size: 1.25rem; max-width: 62ch; }
+.status {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.status li {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 0.15rem;
+  padding: 0.7rem 0.85rem;
+  border-top: 3px solid var(--line);
+  background: var(--surface);
+}
+.status strong { font-weight: 600; }
+.status span { font-size: 0.875rem; font-weight: 600; color: var(--muted); }
+.status .is-done { border-top-color: var(--done); }
+.status .is-done span { color: var(--done); }
+.status .is-next { border-top-color: var(--accent); }
+.status .is-next span { color: var(--accent); }
+
+/* The two features */
+.features {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+.feature {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 5px solid var(--feature);
+}
+.feature-1 { --feature: var(--f1); }
+.feature-2 { --feature: var(--f2); }
+.feature-number {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--feature);
+}
+.feature h2 { font-size: 1.75rem; }
+.feature-head { display: grid; gap: 0.2rem; }
+.states { display: grid; gap: 0.85rem; margin: 0; }
+.state { display: grid; gap: 0.3rem; }
+.state dd { margin: 0; color: var(--muted); font-size: 1rem; }
+
+/* Small replicas of the webapp's real notices. They keep the product's light
+   colours in both page themes, because that is how the webapp looks. */
+.mock {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+.mock small { display: block; font-size: 0.875rem; font-weight: 600; }
+.mock-pending { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.mock-alert { background: #dc2626; color: #ffffff; border-color: #dc2626; }
+.mock-resolved { background: #dcfce7; color: #166534; border-color: #86efac; }
+
+.example {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.85rem;
+  border-radius: 8px;
+  background: #f3f5f8;
+  color: #16202c;
+  font-size: 0.9375rem;
+}
+.example-label { font-size: 0.8125rem; font-weight: 600; color: #55616f; }
+.mock-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding: 0.5rem 0.75rem;
+  background: #ffffff;
+  border: 1px solid #d6dce3;
+  border-radius: 8px;
+}
+.mock-row b {
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mock-row span { font-variant-numeric: tabular-nums; }
+.tag {
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: #d1fae5;
+  color: #065f46;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.points { margin: 0; padding-left: 1.15rem; display: grid; gap: 0.5rem; }
+.rule {
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+/* Diagram */
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.5rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+.legend li { display: flex; align-items: center; gap: 0.5rem; }
+.legend i { width: 28px; height: 3px; display: block; }
+figure {
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.diagram-scroll {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0.75rem;
+}
+svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+figcaption { color: var(--muted); max-width: 72ch; }
+
+/* Next steps */
+.panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.panel-main { border-top: 5px solid var(--accent); }
+.panel-sub { color: var(--muted); }
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: step;
+  display: grid;
+}
+.steps li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr);
+  padding: 0.8rem 0;
+  border-top: 1px solid var(--line);
+}
+.steps li::before {
+  content: counter(step);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  color: var(--accent);
+}
+.steps div { display: grid; gap: 0.3rem; min-width: 0; }
+.steps strong { font-weight: 600; }
+.steps p { color: var(--muted); font-size: 1rem; }
+pre {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+footer {
+  display: grid;
+  gap: 0.2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+@media (max-width: 860px) {
+  .features { grid-template-columns: minmax(0, 1fr); }
+  .status { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 420px) {
+  .status { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<main>
+
+  <header class="intro">
+    <p class="project">6G Path project</p>
+    <h1>Fall alerts and fall history in the Patient Dashboard</h1>
+    <p class="lead">The Patient Dashboard gets two new features for caregivers. The code is finished. The next step is for FOKUS to deploy the new version.</p>
+    <ol class="status" aria-label="Project status">
+      <li class="is-done"><strong>Built</strong><span>Done</span></li>
+      <li class="is-done"><strong>Tested with the mobile app and simulated falls</strong><span>Done</span></li>
+      <li class="is-next"><strong>Deployed by FOKUS</strong><span>Next</span></li>
+      <li><strong>Tested together, end to end</strong><span>After deployment</span></li>
+    </ol>
+  </header>
+
+  <section class="features" aria-label="The two new features">
+    <article class="feature feature-2">
+      <div class="feature-head">
+        <p class="feature-number">Feature 1</p>
+        <h2>Fall alert</h2>
+      </div>
+      <p>Caregivers see a fall as it happens, on wherever they are inside the dashboard.</p>
+      <dl class="states">
+        <div class="state">
+          <dt class="mock mock-pending">Möglicher Sturz, warte auf Bestätigung</dt>
+          <dd>A fall was detected. The patient is being asked on the phone.</dd>
+        </div>
+        <div class="state">
+          <dt class="mock mock-alert">Sturz bestätigt<small>Hilfe angefordert</small></dt>
+          <dd>The patient needs help or doesn't answer. This stays on screen until a caregiver acknowledges it.</dd>
+        </div>
+        <div class="state">
+          <dt class="mock mock-resolved">Patient:in meldet keinen Sturz</dt>
+          <dd>The patient says it wasn't a fall. This disappears after 8 seconds.</dd>
+        </div>
+      </dl>
+      <p class="rule"><strong>Where it shows:</strong> on every page, including on top of open dialogs. The patient's bar on the overview changes colour too, and an indicator in the header shows whether alerts can arrive.</p>
+    </article>
+
+    <article class="feature feature-2">
+      <div class="feature-head">
+        <p class="feature-number">Feature 2</p>
+        <h2>Fall history</h2>
+      </div>
+      <p>Caregivers see how often a patient has fallen.</p>
+      <div class="example">
+        <p class="example-label">Example values</p>
+        <div class="mock-row"><span>Overview: Stürze (7 Tage)</span><b>2</b></div>
+        <div class="mock-row"><span>Patient page: Stürze on the selected day</span><b>1</b></div>
+        <div class="mock-row"><span>14:32:10</span><span class="tag">Bestätigt</span><span>Hilfe: Ja</span></div>
+      </div>
+      <ul class="points">
+        <li><strong>Overview:</strong> each patient's falls in the last 7 days.</li>
+        <li><strong>Patient page:</strong> falls on the date chosen in the calendar, with a list showing the time, the patient's answer and whether help was requested.</li>
+      </ul>
+      <p class="rule"><strong>What counts:</strong> every fall, unless the patient said it wasn't one. No answer still counts, because the patient may have been unable to answer.</p>
+    </article>
+  </section>
+
+  <section aria-labelledby="how">
+    <h2 id="how">System Architecture (Simplified) </h2>
+    <ul class="legend">
+      <li><i style="background:var(--f1)"></i>Fall alert: arrives live through the message broker</li>
+      <li><i style="background:var(--f2)"></i>Fall history: read from the database</li>
+    </ul>
+    <figure>
+      <div class="diagram-scroll">
+        <svg viewBox="0 0 1000 392" role="img" aria-label="The mobile app asks the MCS fall detection model whether a movement was a fall. Alerts travel from the app through the MCS message broker to the Patient Dashboard Webapp. Each fall is also stored in the FOKUS database, and the webapp reads its fall counts from there.">
+          <defs>
+            <marker id="arrow-n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" style="fill:var(--muted)"/></marker>
+            <marker id="arrow-1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L10 5 L0 10 Z" style="fill:var(--f1)"/></marker>
+            <marker id="arrow-2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L10 5 L0 10 Z" style="fill:var(--f2)"/></marker>
+          </defs>
+
+          <!-- Who runs what -->
+          <g style="fill:none;stroke:var(--line)" stroke-width="1.5">
+            <rect x="20" y="14" width="210" height="366"/>
+            <rect x="310" y="14" width="240" height="266"/>
+            <rect x="650" y="14" width="330" height="366"/>
+          </g>
+          <g font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="600" style="fill:var(--muted)">
+            <text x="36" y="42">With the patient</text>
+            <text x="326" y="42">Run by MCS</text>
+            <text x="666" y="42">Run by FOKUS</text>
+          </g>
+
+          <!-- Components -->
+          <g style="fill:var(--paper);stroke:var(--muted)" stroke-width="1.25">
+            <rect x="45" y="62" width="160" height="58" rx="6"/>
+            <rect x="45" y="190" width="160" height="58" rx="6"/>
+            <rect x="340" y="62" width="180" height="58" rx="6"/>
+            <rect x="340" y="190" width="180" height="58" rx="6"/>
+            <rect x="695" y="62" width="240" height="58" rx="6"/>
+            <rect x="695" y="306" width="240" height="58" rx="6"/>
+          </g>
+          <rect x="695" y="190" width="240" height="58" rx="6" style="fill:var(--surface);stroke:var(--ink)" stroke-width="2.25"/>
+          <g font-family="Schibsted Grotesk, Segoe UI, sans-serif" font-size="15" font-weight="700" text-anchor="middle" fill="currentColor">
+            <text x="125" y="96">SmarKo wearable</text>
+            <text x="125" y="224">6G mobile app</text>
+            <text x="430" y="96">Fall detection model</text>
+            <text x="430" y="224">Message broker</text>
+            <text x="815" y="96">FHIR server</text>
+            <text x="815" y="224">Patient Dashboard Webapp</text>
+            <text x="815" y="340">InfluxDB database</text>
+          </g>
+
+          <!-- Supporting connections -->
+          <g fill="none" style="stroke:var(--muted)" stroke-width="1.5">
+            <line x1="125" y1="120" x2="125" y2="189" marker-end="url(#arrow-n)"/>
+            <polyline points="205,204 272,204 272,91 339,91" marker-start="url(#arrow-n)" marker-end="url(#arrow-n)"/>
+            <line x1="815" y1="120" x2="815" y2="189" marker-end="url(#arrow-n)"/>
+          </g>
+
+          <!-- Feature 1 -->
+          <g fill="none" style="stroke:var(--f1)" stroke-width="3">
+            <line x1="205" y1="232" x2="338" y2="232" marker-end="url(#arrow-1)"/>
+            <line x1="520" y1="232" x2="693" y2="232" marker-end="url(#arrow-1)"/>
+          </g>
+
+          <!-- Feature 2 -->
+          <g fill="none" style="stroke:var(--f2)" stroke-width="3">
+            <polyline points="125,248 125,335 693,335" marker-end="url(#arrow-2)"/>
+            <line x1="815" y1="306" x2="815" y2="250" marker-end="url(#arrow-2)"/>
+          </g>
+
+          <!-- Arrow labels -->
+          <g font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14">
+            <text x="133" y="160" style="fill:var(--muted)">sensor data</text>
+            <text x="264" y="150" text-anchor="end" style="fill:var(--muted)">Fall?</text>
+            <text x="823" y="160" style="fill:var(--muted)">patient list</text>
+            <text x="270" y="223" text-anchor="middle" font-weight="600" style="fill:var(--f1)">alert</text>
+            <text x="605" y="223" text-anchor="middle" font-weight="600" style="fill:var(--f1)">live alert</text>
+            <text x="440" y="326" text-anchor="middle" font-weight="600" style="fill:var(--f2)">every fall is stored</text>
+            <text x="823" y="283" font-weight="600" style="fill:var(--f2)">fall counts</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>FOKUS doesn't need to host anything new. MCS runs the fall detection model and the message broker. The only change on the FOKUS side is the new version of the webapp.</figcaption>
+    </figure>
+  </section>
+
+  <section aria-labelledby="next">
+    <h2 id="next">Next steps for you (FOKUS)</h2>
+    <div class="panel panel-main">
+      <div>
+        <h3>Technical person at FOKUS: six steps</h3>
+        <p class="panel-sub">Full details are in <code>README.md</code> on the branch.</p>
+      </div>
+      <ol class="steps">
+        <li><div>
+          <strong>Get the code</strong>
+          <p>Pull the source code from branch <code>fall-dashboard-integration</code> (pushed last week) and check for conflicts.</p>
+        </div></li>
+        <li><div>
+          <strong>Fill in the credentials</strong>
+          <p>Copy <code>dart_defines.example.json</code> to <code>dart_defines.local.json</code>, then add the URL and token for InfluxDB and the username and password for the MQTT broker. The credentials will be sent separately.</p>
+        </div></li>
+        <li><div>
+          <strong>Build the webapp</strong>
+          <pre>flutter build web --release --dart-define-from-file=dart_defines.local.json</pre> or for local testing, <pre>flutter run -d chrome --web-port 8080 --dart-define-from-file=dart_defines.local.json --web-browser-flag "--disable-web-security"</pre>
+          <p>The last flag is only needed locally. <code>localhost</code> is a different origin from the FHIR server, which rejects the <code>serviceaccesstoken</code> header from there (CORS), so without the flag the patient list stays empty. It only affects the temporary Chrome window Flutter opens. Never use it for anything except local development.</p>
+        </div></li>
+        <li><div>
+          <strong>Deploy it as today</strong>
+        </div></li>
+        <li><div>
+          <strong>Allow the connection to the broker</strong>
+          <p>The Patient Dashboard Webapp needs outgoing WSS on port 443 to <code>fall-mqtt.smarko-health.de</code>.</p>
+        </div></li>
+        <li><div>
+          <strong>Check it and tell MCS</strong>
+          <p>The header shows "Sturzalarm verbunden", and "Stürze (7 Tage)" shows numbers. MCS then confirms the connection on the broker.</p>
+        </div></li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+
+  </footer>
+
+</main>
+</body>
+</html>
