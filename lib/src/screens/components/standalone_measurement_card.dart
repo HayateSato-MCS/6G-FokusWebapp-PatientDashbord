@@ -101,7 +101,7 @@ class StandaloneMeasurementCardState extends State<StandaloneMeasurementCard> {
     var tags = [Tag(key: 'user', value: widget.userId)];
     var field = '';
     if (sensor == DataType.R2R_INTERVALS) field = 'rr';
-    if (sensor == DataType.SPO2) field = 'spo2';
+    if (sensor == DataType.SPO2) field = InfluxDBHandler.spo2Field;
     if (sensor == DataType.HEART_RATE) field = 'hr';
     if (sensor == DataType.STEPS) field = 'stepsbosch';
 

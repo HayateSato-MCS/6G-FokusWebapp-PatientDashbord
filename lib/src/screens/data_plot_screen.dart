@@ -192,7 +192,7 @@ class _DataPlotsScreenState extends State<DataPlotsScreen> {
         if (type == DataType.SPO2) {
           // tags.add(Tag(key: '_value', value: 100, type: OperationType.lessEqual));
           // tags.add(Tag(key: '_field', value: 'spo2'));
-          field = 'spo2';
+          field = InfluxDBHandler.spo2Field;
         }
         if (type == DataType.HEART_RATE) {
           // tags.add(Tag(key: '_field', value: 'hr'));
@@ -249,7 +249,7 @@ class _DataPlotsScreenState extends State<DataPlotsScreen> {
     if (sensor == DataType.SPO2) {
       // tags.add(Tag(key: '_value', value: 100, type: OperationType.lessEqual));
       // tags.add(Tag(key: '_field', value: 'spo2'));
-      field = 'spo2';
+      field = InfluxDBHandler.spo2Field;
     }
     if (sensor == DataType.HEART_RATE) {
       // tags.add(Tag(key: '_field', value: 'hr'));

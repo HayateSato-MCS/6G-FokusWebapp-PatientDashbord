@@ -14,6 +14,13 @@ import '../data-distribution/publish_subscribe_manager.dart';
 import '../environment.dart';
 
 class InfluxDBHandler {
+  /// Influx field that holds the SpO2 value on `measurement=blood_oxygen` rows.
+  /// The 6G mobile app (com.mcs.sixgpath) currently writes SpO2 as `hr`
+  /// (same field names as heart_rate, e.g. `blood_oxygen ... hr=97,hrconf=100`);
+  /// there is no `spo2` field in the bucket. Switch back to 'spo2' once the
+  /// app writes it under that name.
+  static const String spo2Field = 'hr';
+
   static InfluxDBHandler? _instance;
   InfluxDBClient? client;
 
@@ -767,7 +774,7 @@ join(tables: {first: firstSteps, last: lastSteps}, on: ["_time","user", "macAddr
       }
       if (type == DataType.SPO2) {
         // tags.add(Tag(key: '_field', value: 'spo2'));
-        field = 'spo2';
+        field = spo2Field;
       }
       if (type == DataType.STEPS) {
         fields.add('steps');
