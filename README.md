@@ -145,6 +145,23 @@ flutter run -d chrome --web-port 8080 `
 
 The last flag is only needed locally. `localhost` is a different origin from the FHIR server, which rejects the `serviceaccesstoken` header from there, so without the flag the patient list stays empty. Flutter starts its own Chrome window with a temporary profile, so your normal browser isn't affected. In the terminal, `r` reloads and `R` restarts. Never use the flag for anything except local development.
 
+### Android APK (tablet, standalone)
+
+The same code also builds as an Android app, for running the dashboard on a tablet without a browser or hosting. As a native app it isn't subject to the FHIR server's CORS check, so the patient list loads directly.
+
+```powershell
+# once per machine: Gradle 8.12 needs a JDK 17–21; Android Studio's bundled one works
+flutter config --jdk-dir "C:\Program Files\Android\Android Studio\jbr"
+
+flutter build apk --release --dart-define-from-file=dart_defines.local.json
+#    output: build\app\outputs\flutter-apk\app-release.apk
+adb install -r build\app\outputs\flutter-apk\app-release.apk   # or copy the file to the tablet and open it
+```
+
+- The APK contains the credentials from `dart_defines.local.json` (InfluxDB token, MQTT login). Anyone with the file can extract them, so don't share it outside the team.
+- It is signed with the debug key: fine for installing by hand ("install unknown apps" allowed on the tablet), not for the Play Store.
+- Tested on a Moto G56 (Android phone): patient list, vitals, fall counts and "Sturzalarm verbunden" all work.
+
 Manual alert tests without a phone: MCS can provide a test account for the broker on request. With it, test messages can be published with MQTT Explorer (`ws://` + TLS on, host `fall-mqtt.smarko-health.de`, port 443, basepath `/`). Use a real test patient's FHIR ID, never retain a message, and coordinate with MCS first.
 
 ---
